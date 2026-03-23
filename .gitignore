@@ -1,1 +1,4 @@
 .superpowers/
+dist/
+.claude/
+node_modules/

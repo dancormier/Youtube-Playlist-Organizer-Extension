@@ -1,0 +1,174 @@
+/* styles/panel.css — YouTube-native inline panel */
+
+#wl-organizer-panel {
+  margin: 4px 0 4px;
+  font-family: 'Roboto', 'Arial', sans-serif;
+  font-size: 1.4rem;
+  color: #f1f1f1;
+  line-height: 2rem;
+}
+
+.wl-hidden { display: none !important; }
+
+/* YouTube-style pill button (matches Play all / Shuffle) */
+.wl-yt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 20px;
+  border: none;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f1f1f1;
+  font-family: 'Roboto', 'Arial', sans-serif;
+  font-size: 1.4rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+.wl-yt-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.wl-btn-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+/* Filled variant for primary actions */
+.wl-yt-btn.wl-btn-filled {
+  background: #f1f1f1;
+  color: #0f0f0f;
+}
+.wl-yt-btn.wl-btn-filled:hover {
+  background: #d9d9d9;
+}
+
+/* Full-width button in idle state */
+#wl-state-idle .wl-yt-btn {
+  width: 100%;
+}
+
+.wl-btn-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* Expanded panel area — no background, just content */
+.wl-expanded {
+  padding: 4px 0;
+  margin-top: 4px;
+}
+
+/* Idle message (sort complete, etc.) */
+#wl-idle-message {
+  color: #f1f1f1;
+  text-align: center;
+  margin-top: 8px;
+}
+
+/* Inline cancel button within status panels */
+.wl-cancel-inline {
+  margin-top: 10px;
+}
+
+/* Text styles */
+.wl-text {
+  color: #f1f1f1;
+  font-size: 1.4rem;
+  margin-bottom: 8px;
+}
+.wl-text-secondary {
+  color: #aaa;
+  font-size: 1.2rem;
+  margin-top: 6px;
+  text-align: center;
+}
+.wl-text-count {
+  color: #f1f1f1;
+  font-size: 1.2rem;
+  margin-top: 6px;
+}
+.wl-text-error {
+  color: #ff4e45;
+  font-size: 1.4rem;
+  margin-bottom: 8px;
+}
+.wl-heading {
+  color: #f1f1f1;
+  font-size: 1.6rem;
+  font-weight: 500;
+  margin-bottom: 10px;
+}
+
+/* Progress bar */
+.wl-progress-bar {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  height: 4px;
+  overflow: hidden;
+}
+.wl-progress-fill {
+  background: #f1f1f1;
+  height: 100%;
+  width: 0%;
+  transition: width 0.2s;
+  border-radius: 4px;
+}
+.wl-progress-fill.wl-indeterminate {
+  width: 30%;
+  animation: wl-indeterminate 1.5s ease-in-out infinite;
+}
+@keyframes wl-indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+/* Preview container — fit within parent without introducing page scroll */
+#wl-state-preview .wl-expanded {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Preview list — scrollable, capped to avoid overflowing the sidebar */
+#wl-preview-list {
+  overflow-y: auto;
+  max-height: 50vh;
+  margin-bottom: 4px;
+}
+
+.wl-cluster-label {
+  font-size: 1.3rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 12px 0 4px;
+}
+.wl-cluster-label.wl-in-progress { color: #ff6b6b; }
+.wl-cluster-label.wl-topic { color: #69b3ff; }
+
+.wl-preview-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0 4px 12px;
+  color: #e0e0e0;
+  font-size: 1.3rem;
+  line-height: 1.8rem;
+}
+.wl-preview-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  margin-right: 12px;
+}
+.wl-preview-meta {
+  color: #999;
+  white-space: nowrap;
+  font-size: 1.2rem;
+}
