@@ -798,7 +798,12 @@ Replace the whole `renderPreview` method in `content/panel.js` with:
     WLModal.setStatus('Re-sorting...');
 
     const overrides = await WLStorage.toggleOverride(videoId);
-    const result = await chrome.runtime.sendMessage({ type: 'RESORT', overrides });
+    const playlistId = new URL(location.href).searchParams.get('list');
+
+    // playlistId is required: the background validates it against its cached
+    // clusters, so a stale cache from another playlist errors instead of
+    // silently returning that playlist's ordering.
+    const result = await chrome.runtime.sendMessage({ type: 'RESORT', overrides, playlistId });
 
     if (!result.success) {
       WLModal.setStatus('');

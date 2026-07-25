@@ -147,6 +147,10 @@ chrome.storage.local = {
 
 Overrides are read by the background when building the sort order, and by the modal to render toggle state. `WLStorage` is the content-side accessor; the background reads `chrome.storage.local` directly.
 
+**Overrides are deliberately global, not scoped per playlist.** An override asserts "YouTube's watch data for this video is wrong" — a property of the video itself, not of the list you happen to be viewing it in. A video appearing in two playlists should carry the correction in both.
+
+**`cachedClusters` is scoped by playlist and must be validated.** `RESORT` carries the current `playlistId`; if it does not match the cached one, the handler errors rather than recomputing. Without that check, analyzing one playlist and toggling in another silently returns the first playlist's ordering — wrong data with no error.
+
 ## Flow
 
 1. User clicks the inline trigger
