@@ -75,3 +75,40 @@ describe('WLInnerTube.readCookie', () => {
     assert.equal(api.readCookie('SAPISID'), 'right');
   });
 });
+
+describe('WLInnerTube.getConfig / resetConfig', () => {
+  it('memoizes — calling getConfig twice returns the identical object', () => {
+    const document = {
+      querySelectorAll: () => [
+        { textContent: '{"INNERTUBE_API_KEY":"key1","DELEGATED_SESSION_ID":"sess1"}' }
+      ],
+      documentElement: { innerHTML: 'fallback' },
+    };
+    const api = load({ document });
+    const config1 = api.getConfig();
+    const config2 = api.getConfig();
+    assert.strictEqual(config1, config2);
+  });
+
+  it('after resetConfig, the next getConfig re-reads and reflects changed content', () => {
+    const document = {
+      querySelectorAll: () => [
+        { textContent: '{"INNERTUBE_API_KEY":"key1","DELEGATED_SESSION_ID":"sess1"}' }
+      ],
+      documentElement: { innerHTML: 'fallback' },
+    };
+    const api = load({ document });
+    const config1 = api.getConfig();
+    assert.equal(config1.delegatedSessionId, 'sess1');
+
+    // Change the document content
+    document.querySelectorAll = () => [
+      { textContent: '{"INNERTUBE_API_KEY":"key2","DELEGATED_SESSION_ID":"sess2"}' }
+    ];
+
+    // Without reset, it would still return the memoized config
+    api.resetConfig();
+    const config2 = api.getConfig();
+    assert.equal(config2.delegatedSessionId, 'sess2');
+  });
+});

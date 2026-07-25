@@ -33,6 +33,11 @@ const WLInnerTube = {
     return this._config;
   },
 
+  /** Clear the memoized config cache. Required for SPA navigation and account switches. */
+  resetConfig() {
+    this._config = null;
+  },
+
   readCookie(name) {
     const match = document.cookie.match(new RegExp(`(^|;\\s*)${name}=([^;]*)`));
     return match ? match[2] : null;
