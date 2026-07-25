@@ -4,6 +4,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
+VERSION=$(node -p "require('./package.json').version")
+echo "Building version $VERSION"
+
 # Clean
 rm -rf dist
 mkdir -p dist/chrome dist/firefox
@@ -37,7 +40,11 @@ copy_shared() {
 
 # ── Chrome ──
 copy_shared dist/chrome
-cp manifest.chrome.json dist/chrome/manifest.json
+node -e "
+  const m = require('./manifest.chrome.json');
+  m.version = process.argv[1];
+  require('fs').writeFileSync('dist/chrome/manifest.json', JSON.stringify(m, null, 2));
+" "$VERSION"
 # Chrome uses ES module service worker — copy lib/ and background/ as-is
 mkdir -p dist/chrome/background dist/chrome/lib
 cp background/service-worker.js dist/chrome/background/
@@ -46,7 +53,11 @@ cp lib/sort.js dist/chrome/lib/
 
 # ── Firefox ──
 copy_shared dist/firefox
-cp manifest.firefox.json dist/firefox/manifest.json
+node -e "
+  const m = require('./manifest.firefox.json');
+  m.version = process.argv[1];
+  require('fs').writeFileSync('dist/firefox/manifest.json', JSON.stringify(m, null, 2));
+" "$VERSION"
 # Firefox needs a bundled background script (no ES module support in background)
 mkdir -p dist/firefox/background
 cat lib/sort.js lib/claude-api.js background/service-worker.js \

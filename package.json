@@ -1,6 +1,11 @@
 {
   "private": true,
   "type": "module",
+  "version": "0.5.0",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "build": "./build.sh"
+  },
   "dependencies": {
     "canvas": "^3.2.1"
   }
