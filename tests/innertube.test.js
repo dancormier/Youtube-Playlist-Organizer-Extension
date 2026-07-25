@@ -112,3 +112,131 @@ describe('WLInnerTube.getConfig / resetConfig', () => {
     assert.equal(config2.delegatedSessionId, 'sess2');
   });
 });
+
+describe('WLInnerTube.findAll', () => {
+  it('finds values at any depth', () => {
+    const api = load();
+    const tree = { a: { b: [{ target: 1 }, { c: { target: 2 } }] } };
+    assert.deepEqual(api.findAll(tree, 'target'), [1, 2]);
+  });
+
+  it('returns an empty array when the key is absent', () => {
+    assert.deepEqual(load().findAll({ a: 1 }, 'missing'), []);
+  });
+});
+
+describe('WLInnerTube.nextToken', () => {
+  it('prefers the token under continuationItemRenderer', () => {
+    const data = {
+      decoy: { continuationCommand: { token: 'WRONG' } },
+      contents: {
+        continuationItemRenderer: {
+          continuationEndpoint: { continuationCommand: { token: 'RIGHT' } },
+        },
+      },
+    };
+    assert.equal(load().nextToken(data), 'RIGHT');
+  });
+
+  it('returns null when there is no continuation', () => {
+    assert.equal(load().nextToken({ contents: [] }), null);
+  });
+
+  it('ignores continuation entries with no token', () => {
+    const data = { continuationItemRenderer: { continuationCommand: {} } };
+    assert.equal(load().nextToken(data), null);
+  });
+});
+
+describe('WLInnerTube.call', () => {
+  function apiWithFetch(fetchImpl) {
+    const api = load({ fetch: fetchImpl, document: { cookie: 'SAPISID=secret' } });
+    api._config = { apiKey: 'K', clientName: 'WEB', clientVersion: '2.0', delegatedSessionId: null };
+    return api;
+  }
+
+  it('returns parsed JSON on success', async () => {
+    const api = apiWithFetch(async () => ({
+      ok: true, status: 200, json: async () => ({ hello: 'world' }),
+    }));
+    assert.deepEqual(await api.call('browse', { browseId: 'VLWL' }), { hello: 'world' });
+  });
+
+  it('sends the auth header and credentials', async () => {
+    let seen = null;
+    const api = apiWithFetch(async (url, options) => {
+      seen = { url, options };
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+    await api.call('browse', { browseId: 'VLWL' });
+    assert.match(seen.url, /youtubei\/v1\/browse\?key=K/);
+    assert.match(seen.options.headers.Authorization, /^SAPISIDHASH \d+_[0-9a-f]{40}$/);
+    assert.equal(seen.options.credentials, 'include');
+  });
+
+  it('merges the client context into the body', async () => {
+    let body = null;
+    const api = apiWithFetch(async (url, options) => {
+      body = JSON.parse(options.body);
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+    await api.call('browse', { browseId: 'VLWL' });
+    assert.equal(body.browseId, 'VLWL');
+    assert.equal(body.context.client.clientVersion, '2.0');
+  });
+
+  it('throws InnerTubeError carrying endpoint and status', async () => {
+    const api = apiWithFetch(async () => ({
+      ok: false, status: 404, text: async () => 'Requested entity was not found.',
+    }));
+    await assert.rejects(
+      () => api.call('browse', {}),
+      (err) => {
+        assert.equal(err.name, 'InnerTubeError');
+        assert.equal(err.endpoint, 'browse');
+        assert.equal(err.status, 404);
+        assert.match(err.snippet, /not found/);
+        return true;
+      }
+    );
+  });
+
+  it('throws InnerTubeError when there is no readable cookie', async () => {
+    const api = load({ fetch: async () => ({ ok: true, status: 200, json: async () => ({}) }),
+                       document: { cookie: '' } });
+    api._config = { apiKey: 'K', clientName: 'WEB', clientVersion: '2.0' };
+    await assert.rejects(() => api.call('browse', {}), /no readable SAPISID/i);
+  });
+});
+
+describe('WLInnerTube.pageAll', () => {
+  it('follows continuations until exhausted', async () => {
+    const pages = [
+      { id: 1, continuationItemRenderer: { continuationCommand: { token: 't1' } } },
+      { id: 2, continuationItemRenderer: { continuationCommand: { token: 't2' } } },
+      { id: 3 },
+    ];
+    let call = 0;
+    const api = load({
+      fetch: async () => ({ ok: true, status: 200, json: async () => pages[call++] }),
+      document: { cookie: 'SAPISID=secret' },
+    });
+    api._config = { apiKey: 'K', clientName: 'WEB', clientVersion: '2.0' };
+
+    const result = await api.pageAll({ browseId: 'VLWL' });
+    assert.equal(result.length, 3);
+    assert.deepEqual(result.map(p => p.id), [1, 2, 3]);
+  });
+
+  it('stops when a continuation token repeats', async () => {
+    const stuck = { id: 'x', continuationItemRenderer: { continuationCommand: { token: 'same' } } };
+    const api = load({
+      fetch: async () => ({ ok: true, status: 200, json: async () => stuck }),
+      document: { cookie: 'SAPISID=secret' },
+    });
+    api._config = { apiKey: 'K', clientName: 'WEB', clientVersion: '2.0' };
+
+    const result = await api.pageAll({ browseId: 'VLWL' });
+    assert.equal(result.length, 2, 'should stop once the token repeats');
+  });
+});
