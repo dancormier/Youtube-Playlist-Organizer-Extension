@@ -1,77 +1,134 @@
 // tests/sort.test.js
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSortOrder } from '../lib/sort.js';
+import { buildSortOrder, effectiveProgress, WATCHED_THRESHOLD } from '../lib/sort.js';
+import { UNAVAILABLE_GROUP } from '../lib/taxonomy.js';
+
+function video(overrides = {}) {
+  return {
+    id: 'v', setVideoId: 'S', title: 'T', channel: 'C',
+    duration: 600, percentWatched: 0, category: null,
+    description: null, unavailable: false,
+    ...overrides,
+  };
+}
+
+describe('effectiveProgress', () => {
+  it('treats progress below the threshold as unwatched', () => {
+    assert.equal(effectiveProgress(video({ percentWatched: 9 }), []), 0);
+  });
+
+  it('treats exactly the threshold as watched', () => {
+    assert.equal(effectiveProgress(video({ percentWatched: WATCHED_THRESHOLD }), []), WATCHED_THRESHOLD);
+  });
+
+  it('treats an overridden video as unwatched regardless of progress', () => {
+    assert.equal(effectiveProgress(video({ id: 'x', percentWatched: 100 }), ['x']), 0);
+  });
+
+  it('leaves non-overridden videos alone', () => {
+    assert.equal(effectiveProgress(video({ id: 'x', percentWatched: 50 }), ['other']), 50);
+  });
+});
 
 describe('buildSortOrder', () => {
-  const videos = [
-    { id: 'v1', title: 'Roman Empire', channel: 'History Guy', duration: 1200, progress: 0.72 },
-    { id: 'v2', title: 'Perfect Pasta', channel: 'Chef', duration: 600, progress: 0.35 },
-    { id: 'v3', title: 'Constantinople', channel: 'History Guy', duration: 754, progress: 0 },
-    { id: 'v4', title: 'Viking Age', channel: 'Timeline', duration: 2721, progress: 0 },
-    { id: 'v5', title: 'Stand-up Highlights', channel: 'Comedy Central', duration: 495, progress: 0 },
-    { id: 'v6', title: 'Sketch Comedy', channel: 'SNL', duration: 1327, progress: 0 },
-    { id: 'v7', title: 'Film Analysis', channel: 'Every Frame', duration: 900, progress: 0 },
-  ];
-
   const clusters = {
     clusters: [
-      { name: 'History', videoIds: ['v3', 'v4'] },
-      { name: 'Comedy', videoIds: ['v5', 'v6'] },
-      { name: 'Media Criticism', videoIds: ['v7'] },
-    ]
+      { name: 'Tech & AI', videoIds: ['t1', 't2'] },
+      { name: 'Music', videoIds: ['m1'] },
+    ],
   };
 
-  it('puts in-progress videos first, sorted by remaining time ascending', () => {
-    const result = buildSortOrder(videos, clusters);
-    // v1: 1200 * (1 - 0.72) = 336s remaining
-    // v2: 600 * (1 - 0.35) = 390s remaining
-    assert.equal(result[0].id, 'v1'); // 336s remaining
-    assert.equal(result[1].id, 'v2'); // 390s remaining
+  it('returns an empty array for empty input', () => {
+    assert.deepEqual(buildSortOrder([], { clusters: [] }, []), []);
   });
 
-  it('groups remaining videos by cluster', () => {
-    const result = buildSortOrder(videos, clusters);
-    const afterProgress = result.slice(2);
-    const historyIdx = afterProgress.findIndex(v => v.id === 'v3');
-    const otherHistoryIdx = afterProgress.findIndex(v => v.id === 'v4');
-    assert.ok(Math.abs(historyIdx - otherHistoryIdx) === 1, 'History videos should be adjacent');
-  });
-
-  it('sorts within clusters by duration ascending', () => {
-    const result = buildSortOrder(videos, clusters);
-    const afterProgress = result.slice(2);
-    const historyVideos = afterProgress.filter(v => ['v3', 'v4'].includes(v.id));
-    assert.equal(historyVideos[0].id, 'v3'); // 754s
-    assert.equal(historyVideos[1].id, 'v4'); // 2721s
-  });
-
-  it('includes cluster name in the result', () => {
-    const result = buildSortOrder(videos, clusters);
-    const v3 = result.find(v => v.id === 'v3');
-    assert.equal(v3.cluster, 'History');
-  });
-
-  it('marks in-progress videos with no cluster', () => {
-    const result = buildSortOrder(videos, clusters);
-    assert.equal(result[0].cluster, null);
-    assert.equal(result[1].cluster, null);
-  });
-
-  it('handles videos not assigned to any cluster', () => {
-    const sparseCluster = { clusters: [{ name: 'History', videoIds: ['v3'] }] };
-    const smallList = [
-      { id: 'v3', title: 'Constantinople', channel: 'History Guy', duration: 754, progress: 0 },
-      { id: 'v5', title: 'Stand-up', channel: 'Comedy Central', duration: 495, progress: 0 },
+  it('puts in-progress videos first', () => {
+    const videos = [
+      video({ id: 't1', percentWatched: 0 }),
+      video({ id: 'p1', percentWatched: 50 }),
     ];
-    const result = buildSortOrder(smallList, sparseCluster);
-    assert.equal(result.length, 2);
-    const v5 = result.find(v => v.id === 'v5');
-    assert.equal(v5.cluster, 'Other');
+    const [first] = buildSortOrder(videos, clusters, []);
+    assert.equal(first.id, 'p1');
+    assert.equal(first.cluster, null);
   });
 
-  it('returns empty array for empty input', () => {
-    const result = buildSortOrder([], { clusters: [] });
-    assert.deepEqual(result, []);
+  it('sorts in-progress by remaining watch time ascending', () => {
+    const videos = [
+      video({ id: 'long', duration: 1000, percentWatched: 50 }),   // 500s left
+      video({ id: 'short', duration: 400, percentWatched: 50 }),   // 200s left
+    ];
+    const order = buildSortOrder(videos, { clusters: [] }, []);
+    assert.deepEqual(order.map(v => v.id), ['short', 'long']);
+  });
+
+  it('does not promote videos below the threshold', () => {
+    const videos = [
+      video({ id: 't1', percentWatched: 5 }),
+      video({ id: 't2', percentWatched: 0 }),
+    ];
+    const order = buildSortOrder(videos, clusters, []);
+    assert.equal(order.every(v => v.cluster !== null), true);
+  });
+
+  it('respects overrides, moving the video out of in-progress', () => {
+    const videos = [video({ id: 't1', percentWatched: 100 })];
+    const order = buildSortOrder(videos, clusters, ['t1']);
+    assert.equal(order[0].cluster, 'Tech & AI');
+  });
+
+  it('orders groups by the taxonomy, not by cluster response order', () => {
+    const videos = [video({ id: 't1' }), video({ id: 'm1' })];
+    const order = buildSortOrder(videos, clusters, []);
+    // Music precedes Tech & AI in the taxonomy.
+    assert.deepEqual(order.map(v => v.id), ['m1', 't1']);
+  });
+
+  it('sorts by duration ascending within a group', () => {
+    const videos = [
+      video({ id: 't1', duration: 900 }),
+      video({ id: 't2', duration: 300 }),
+    ];
+    const order = buildSortOrder(videos, clusters, []);
+    assert.deepEqual(order.map(v => v.id), ['t2', 't1']);
+  });
+
+  it('places unavailable videos last, in their own group', () => {
+    const videos = [
+      video({ id: 'ghost', unavailable: true }),
+      video({ id: 't1' }),
+    ];
+    const order = buildSortOrder(videos, clusters, []);
+    assert.equal(order[order.length - 1].id, 'ghost');
+    assert.equal(order[order.length - 1].cluster, UNAVAILABLE_GROUP);
+  });
+
+  it('puts unclustered videos in Other, before unavailable', () => {
+    const videos = [
+      video({ id: 'ghost', unavailable: true }),
+      video({ id: 'orphan' }),
+      video({ id: 't1' }),
+    ];
+    const order = buildSortOrder(videos, clusters, []);
+    assert.deepEqual(order.map(v => v.id), ['t1', 'orphan', 'ghost']);
+    assert.equal(order[1].cluster, 'Other');
+  });
+
+  it('appends model-invented categories after the taxonomy', () => {
+    const videos = [video({ id: 'n1' }), video({ id: 'm1' })];
+    const withNew = { clusters: [{ name: 'Knitting', videoIds: ['n1'] }, { name: 'Music', videoIds: ['m1'] }] };
+    const order = buildSortOrder(videos, withNew, []);
+    assert.deepEqual(order.map(v => v.id), ['m1', 'n1']);
+  });
+
+  it('includes every input video exactly once', () => {
+    const videos = [
+      video({ id: 't1' }), video({ id: 't2' }), video({ id: 'm1' }),
+      video({ id: 'orphan' }), video({ id: 'ghost', unavailable: true }),
+      video({ id: 'p1', percentWatched: 40 }),
+    ];
+    const order = buildSortOrder(videos, clusters, []);
+    assert.equal(order.length, videos.length);
+    assert.equal(new Set(order.map(v => v.id)).size, videos.length);
   });
 });
