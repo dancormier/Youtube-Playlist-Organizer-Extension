@@ -34,44 +34,60 @@ chrome.tabs.query({}, (tabs) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'ANALYZE') {
-    handleAnalyze(message.videos, message.mode).then(sendResponse);
+    handleAnalyze(message.videos, message.playlistId).then(sendResponse);
+    return true;
+  }
+
+  if (message.type === 'RESORT') {
+    handleResort(message.overrides).then(sendResponse);
     return true;
   }
 
   if (message.type === 'SORT_BY_DURATION') {
-    const sortOrder = buildDurationSortOrder(message.videos);
-    sendResponse({ success: true, sortOrder });
+    sendResponse({ success: true, sortOrder: buildDurationSortOrder(message.videos) });
     return true;
   }
 
   if (message.type === 'GET_SORT_STATE') {
-    chrome.storage.local.get('sortState', (data) => {
-      sendResponse(data.sortState || null);
-    });
+    chrome.storage.local.get('sortState', (data) => sendResponse(data.sortState || null));
     return true;
   }
 });
 
-async function handleAnalyze(videos) {
+async function handleAnalyze(videos, playlistId) {
   try {
     const { apiKey } = await chrome.storage.sync.get('apiKey');
     if (!apiKey) {
       return { success: false, error: 'No API key configured. Open settings to add your Claude API key.' };
     }
 
-    const unwatched = videos.filter(v => v.progress === 0);
-    const clusters = await categorizeVideos(apiKey, unwatched);
-    const sortOrder = buildSortOrder(videos, clusters);
+    const { unwatchedOverrides = [] } = await chrome.storage.local.get('unwatchedOverrides');
+
+    const classifiable = videos.filter(v => !v.unavailable);
+    const clusters = await categorizeVideos(apiKey, classifiable);
+    const sortOrder = buildSortOrder(videos, clusters, unwatchedOverrides);
 
     await chrome.storage.local.set({
-      sortState: {
-        videos,
-        clusters,
-        sortOrder,
-        timestamp: Date.now(),
-      },
+      cachedClusters: { playlistId, clusters, videos },
+      sortState: { videos, clusters, sortOrder, timestamp: Date.now() },
     });
 
+    return { success: true, sortOrder };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/** Re-sort using cached clusters. Never calls Claude — watch state does not change grouping. */
+async function handleResort(overrides) {
+  try {
+    const { cachedClusters } = await chrome.storage.local.get('cachedClusters');
+    if (!cachedClusters) {
+      return { success: false, error: 'No cached analysis. Run Analyze first.' };
+    }
+
+    await chrome.storage.local.set({ unwatchedOverrides: overrides });
+    const sortOrder = buildSortOrder(cachedClusters.videos, cachedClusters.clusters, overrides);
     return { success: true, sortOrder };
   } catch (err) {
     return { success: false, error: err.message };
