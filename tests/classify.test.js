@@ -67,4 +67,32 @@ describe('parseClusters', () => {
   it('throws when the clusters array is missing', () => {
     assert.throws(() => parseClusters('{"groups":[]}'), /Missing "clusters" array/);
   });
+
+  it('throws when a cluster videoIds is a string instead of an array', () => {
+    assert.throws(
+      () => parseClusters('{"clusters":[{"name":"Music","videoIds":"abc123"}]}'),
+      /Invalid cluster at index 0.*"videoIds" must be an array, got string/
+    );
+  });
+
+  it('throws when a cluster videoIds is absent', () => {
+    assert.throws(
+      () => parseClusters('{"clusters":[{"name":"Music"}]}'),
+      /Invalid cluster at index 0.*"videoIds" must be an array, got undefined/
+    );
+  });
+
+  it('throws when a cluster name is missing', () => {
+    assert.throws(
+      () => parseClusters('{"clusters":[{"videoIds":["a"]}]}'),
+      /Invalid cluster at index 0.*"name" must be a non-empty string/
+    );
+  });
+
+  it('throws when a cluster name is empty', () => {
+    assert.throws(
+      () => parseClusters('{"clusters":[{"name":"","videoIds":["a"]}]}'),
+      /Invalid cluster at index 0.*"name" must be a non-empty string/
+    );
+  });
 });
