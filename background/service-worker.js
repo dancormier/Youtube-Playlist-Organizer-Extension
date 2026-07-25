@@ -1,5 +1,5 @@
 // background/service-worker.js
-import { categorizeVideos } from '../lib/claude-api.js';
+import { categorizeVideos } from '../lib/classify.js';
 import { buildSortOrder, buildDurationSortOrder } from '../lib/sort.js';
 
 // Switch icon to active (red) on YouTube, default (gray) elsewhere

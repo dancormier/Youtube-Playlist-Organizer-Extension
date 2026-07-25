@@ -48,7 +48,7 @@ node -e "
 # Chrome uses ES module service worker — copy lib/ and background/ as-is
 mkdir -p dist/chrome/background dist/chrome/lib
 cp background/service-worker.js dist/chrome/background/
-cp lib/claude-api.js dist/chrome/lib/
+cp lib/classify.js dist/chrome/lib/
 cp lib/sort.js dist/chrome/lib/
 cp lib/taxonomy.js dist/chrome/lib/
 
@@ -61,7 +61,7 @@ node -e "
 " "$VERSION"
 # Firefox needs a bundled background script (no ES module support in background)
 mkdir -p dist/firefox/background
-cat lib/taxonomy.js lib/sort.js lib/claude-api.js background/service-worker.js \
+cat lib/taxonomy.js lib/sort.js lib/classify.js background/service-worker.js \
   | sed 's/^export function/function/' \
   | sed 's/^export async function/async function/' \
   | sed 's/^export const/const/' \
