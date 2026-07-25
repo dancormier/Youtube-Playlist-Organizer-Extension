@@ -972,7 +972,7 @@ describe('WLPlaylist.applyOrder', () => {
     return { playlist, calls };
   }
 
-  it('sends every move in a single call', async () => {
+  it('makes no edit call for a list too short to reorder', async () => {
     const { playlist, calls } = withCalls((endpoint) =>
       endpoint === 'browse/edit_playlist'
         ? { status: 'STATUS_SUCCEEDED' }
@@ -980,7 +980,7 @@ describe('WLPlaylist.applyOrder', () => {
     );
     await playlist.applyOrder('PLx', ['A']);
     const edits = calls.filter(c => c.endpoint === 'browse/edit_playlist');
-    assert.equal(edits.length, 0, 'a single-item list needs no edit call');
+    assert.equal(edits.length, 0);
   });
 
   it('batches all actions into one edit_playlist request', async () => {
@@ -1889,7 +1889,7 @@ git commit -m "feat(classify): assign videos into a fixed taxonomy using channel
 
 **Files:**
 - Modify: `background/service-worker.js`
-- Test: `tests/background-messages.test.js`
+- Test: `tests/resort-contract.test.js`
 
 **Interfaces:**
 - Consumes: `categorizeVideos`, `buildSortOrder`, `buildDurationSortOrder`
@@ -1897,12 +1897,19 @@ git commit -m "feat(classify): assign videos into a fixed taxonomy using channel
   - `{type: 'ANALYZE', videos, playlistId}` → `{success: true, sortOrder}` or `{success: false, error}`
   - `{type: 'RESORT', overrides}` → `{success: true, sortOrder}` or `{success: false, error}`
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the characterization test**
 
-Create `tests/background-messages.test.js`:
+This is a characterization test, not a red-green test: it pins down the
+`buildSortOrder` behaviour that `handleResort` depends on, so that a later
+change to sorting can't silently break re-sorting. It is expected to pass
+immediately against Task 7's code.
+
+Create `tests/resort-contract.test.js`:
 
 ```js
-// tests/background-messages.test.js
+// tests/resort-contract.test.js
+// Pins the sorting behaviour handleResort relies on: overrides change which
+// group a video lands in, and never change cluster membership.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildSortOrder } from '../lib/sort.js';
@@ -1946,7 +1953,7 @@ describe('resort against cached clusters', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `node --test tests/background-messages.test.js`
+Run: `node --test tests/resort-contract.test.js`
 Expected: PASS immediately — this test locks in behaviour from Task 7 that the handler must preserve. If it fails, Task 7 is wrong; fix that first.
 
 - [ ] **Step 3: Rewrite the message handlers**
@@ -2030,7 +2037,7 @@ Expected: PASS
 - [ ] **Step 6: Commit**
 
 ```bash
-git add background/service-worker.js tests/background-messages.test.js
+git add background/service-worker.js tests/resort-contract.test.js
 git commit -m "feat(background): add RESORT handler and cluster caching"
 ```
 
