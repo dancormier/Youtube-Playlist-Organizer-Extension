@@ -126,16 +126,27 @@ describe('WLInnerTube.findAll', () => {
 });
 
 describe('WLInnerTube.nextToken', () => {
-  it('prefers the token under continuationItemRenderer', () => {
+  it('prefers the token under continuationItemRenderer, not the last token in tree order', () => {
+    const api = load();
     const data = {
-      decoy: { continuationCommand: { token: 'WRONG' } },
       contents: {
         continuationItemRenderer: {
           continuationEndpoint: { continuationCommand: { token: 'RIGHT' } },
         },
       },
+      decoy: { continuationCommand: { token: 'WRONG' } },
+      deepDecoy: {
+        nested: {
+          deeplyNested: { continuationCommand: { token: 'ALSO_WRONG' } },
+        },
+      },
     };
-    assert.equal(load().nextToken(data), 'RIGHT');
+    // Verify the bug exists: a naive last-wins strategy would pick the wrong token
+    const allTokens = api.findAll(data, 'continuationCommand');
+    assert.ok(allTokens.length > 1, 'fixture should contain multiple continuationCommand objects');
+    assert.notEqual(allTokens[allTokens.length - 1].token, 'RIGHT', 'last token in tree should not be the correct one');
+    // Verify the correct implementation picks the right one
+    assert.equal(api.nextToken(data), 'RIGHT');
   });
 
   it('returns null when there is no continuation', () => {
@@ -206,6 +217,27 @@ describe('WLInnerTube.call', () => {
                        document: { cookie: '' } });
     api._config = { apiKey: 'K', clientName: 'WEB', clientVersion: '2.0' };
     await assert.rejects(() => api.call('browse', {}), /no readable SAPISID/i);
+  });
+
+  it('exercises getConfig() by scraping config from document when _config is not preset', async () => {
+    let seenRequest = null;
+    const configScript = `{"INNERTUBE_API_KEY":"scraped-key","INNERTUBE_CLIENT_NAME":"WEB","INNERTUBE_CLIENT_VERSION":"2.26.0"}`;
+    const document = {
+      querySelectorAll: () => [{ textContent: configScript }],
+      documentElement: { innerHTML: 'fallback' },
+      cookie: 'SAPISID=secret',
+    };
+    const api = load({
+      fetch: async (url, options) => {
+        seenRequest = { url, body: JSON.parse(options.body) };
+        return { ok: true, status: 200, json: async () => ({ success: true }) };
+      },
+      document,
+    });
+    // Do NOT preset api._config — force it to scan the document
+    await api.call('browse', { browseId: 'VLWL' });
+    assert.match(seenRequest.url, /key=scraped-key/, 'URL should contain the scraped API key');
+    assert.equal(seenRequest.body.context.client.clientVersion, '2.26.0', 'body should contain the scraped client version');
   });
 });
 
