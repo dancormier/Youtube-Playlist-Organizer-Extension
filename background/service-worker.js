@@ -39,7 +39,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'RESORT') {
-    handleResort(message.overrides).then(sendResponse);
+    handleResort(message.overrides, message.playlistId).then(sendResponse);
     return true;
   }
 
@@ -79,15 +79,23 @@ async function handleAnalyze(videos, playlistId) {
 }
 
 /** Re-sort using cached clusters. Never calls Claude — watch state does not change grouping. */
-async function handleResort(overrides) {
+async function handleResort(overrides, playlistId) {
   try {
     const { cachedClusters } = await chrome.storage.local.get('cachedClusters');
     if (!cachedClusters) {
       return { success: false, error: 'No cached analysis. Run Analyze first.' };
     }
+    if (cachedClusters.playlistId !== playlistId) {
+      return { success: false, error: 'Cached analysis belongs to a different playlist. Run Analyze again.' };
+    }
 
     await chrome.storage.local.set({ unwatchedOverrides: overrides });
     const sortOrder = buildSortOrder(cachedClusters.videos, cachedClusters.clusters, overrides);
+
+    await chrome.storage.local.set({
+      sortState: { videos: cachedClusters.videos, clusters: cachedClusters.clusters, sortOrder, timestamp: Date.now() },
+    });
+
     return { success: true, sortOrder };
   } catch (err) {
     return { success: false, error: err.message };
