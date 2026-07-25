@@ -3,17 +3,15 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadGlobal } from './helpers/load-global.js';
 
+// Load the real WLInnerTube for its findAll — the single shared tree-walk that
+// WLPlaylist depends on heavily. It touches `document`/`crypto` only inside methods
+// we never call here (getConfig, currentAuth, etc.), so it's safe to load without
+// stubbing those globals. call/pageAll are stubbed per-test as before.
+const realInnerTube = loadGlobal('content/innertube.js', 'WLInnerTube', {});
+
 function load(innerTube = {}) {
   const stub = {
-    findAll(obj, key, found = []) {
-      if (obj === null || typeof obj !== 'object') return found;
-      if (Array.isArray(obj)) { for (const v of obj) this.findAll(v, key, found); return found; }
-      for (const [k, v] of Object.entries(obj)) {
-        if (k === key) found.push(v);
-        this.findAll(v, key, found);
-      }
-      return found;
-    },
+    findAll: realInnerTube.findAll.bind(realInnerTube),
     ...innerTube,
   };
   return loadGlobal('content/playlist.js', 'WLPlaylist', { WLInnerTube: stub });
