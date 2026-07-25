@@ -218,4 +218,34 @@ describe('WLPlaylist.applyOrder', () => {
     const result = await playlist.applyOrder('PLx', ['B', 'A'], { timeoutMs: 50, intervalMs: 10 });
     assert.equal(result.applied, false);
   });
+
+  it('retries on stale reads until the order converges', async () => {
+    let browseCount = 0;
+    const { playlist } = withCalls((endpoint) => {
+      if (endpoint === 'browse/edit_playlist') {
+        return { status: 'STATUS_SUCCEEDED' };
+      }
+      // endpoint === 'browse' (used by pageAll/read)
+      browseCount++;
+      if (browseCount === 1) {
+        // Stale read - old order still visible due to server-side caching
+        return {
+          contents: [
+            { playlistVideoRenderer: renderer({ videoId: 'a', setVideoId: 'A' }) },
+            { playlistVideoRenderer: renderer({ videoId: 'b', setVideoId: 'B' }) },
+          ],
+        };
+      }
+      // Converged - new order now visible
+      return {
+        contents: [
+          { playlistVideoRenderer: renderer({ videoId: 'b', setVideoId: 'B' }) },
+          { playlistVideoRenderer: renderer({ videoId: 'a', setVideoId: 'A' }) },
+        ],
+      };
+    });
+    const result = await playlist.applyOrder('PLx', ['B', 'A'], { timeoutMs: 500, intervalMs: 10 });
+    assert.equal(result.applied, true);
+    assert.ok(result.waitedMs > 0, 'should have polled and waited for convergence');
+  });
 });
