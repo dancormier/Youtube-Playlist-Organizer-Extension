@@ -69,8 +69,18 @@ cat lib/taxonomy.js lib/sort.js lib/classify.js background/service-worker.js \
   | sed "s/^import.*from.*$//" \
   > dist/firefox/background/background.bundle.js
 
+# Catches syntax defects in the bundle (e.g. an unstripped `export`). It cannot
+# catch linkage bugs — a lib/ module imported by the service worker but missing
+# from the `cat` list above still parses fine and only throws ReferenceError at
+# message-handling time in the real browser — but it's a cheap, automated floor.
+node --check dist/firefox/background/background.bundle.js
+
 # ── Package Firefox .xpi ──
-web-ext build --source-dir dist/firefox --artifacts-dir dist --filename youtube-wl-organizer.xpi --overwrite-dest 2>/dev/null || true
+if command -v web-ext >/dev/null 2>&1; then
+  web-ext build --source-dir dist/firefox --artifacts-dir dist --filename youtube-wl-organizer.xpi --overwrite-dest 2>/dev/null
+else
+  echo "web-ext not found — skipping .xpi packaging" >&2
+fi
 
 echo ""
 echo "Build complete:"
