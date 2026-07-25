@@ -1,5 +1,5 @@
 // content/panel.js
-// Depends on: content/selectors.js, content/scraper.js
+// Depends on: content/selectors.js, content/innertube.js, content/playlist.js, content/enrich.js
 
 const WLPanel = {
   panel: null,
@@ -46,7 +46,6 @@ const WLPanel = {
         <p class="wl-text">Sorting your Watch Later...</p>
         <div class="wl-progress-bar"><div class="wl-progress-fill" id="wl-sort-progress"></div></div>
         <p id="wl-sort-count" class="wl-text-count">0 / 0 videos moved</p>
-        <button class="wl-yt-btn wl-cancel-inline" id="wl-sort-cancel-btn">Cancel</button>
       </div>
 
       <!-- Error state -->
@@ -94,8 +93,12 @@ const WLPanel = {
       const isWatchLater = location.search.includes('list=WL');
 
       try {
-        const videos = await WLScraper.scrapeAll();
+        const playlistId = new URL(location.href).searchParams.get('list');
+        const videos = await WLPlaylist.read(playlistId);
         if (this._analyseCancelled) return;
+
+        this.$('#wl-analyze-status').textContent = 'Fetching video details...';
+        await WLEnrich.enrich(videos);
 
         if (!videos || videos.length === 0) {
           this.showError('No videos found on this playlist.');
@@ -116,7 +119,8 @@ const WLPanel = {
         let result;
         if (isWatchLater) {
           this.$('#wl-analyze-status').textContent = 'Categorizing with AI...';
-          result = await chrome.runtime.sendMessage({ type: 'ANALYZE', videos });
+          const playlistIdForAnalyze = new URL(location.href).searchParams.get('list');
+          result = await chrome.runtime.sendMessage({ type: 'ANALYZE', videos, playlistId: playlistIdForAnalyze });
         } else {
           this.$('#wl-analyze-status').textContent = 'Sorting by duration...';
           result = await chrome.runtime.sendMessage({ type: 'SORT_BY_DURATION', videos });
@@ -145,33 +149,28 @@ const WLPanel = {
     // Apply sort
     this.$('#wl-apply-btn').addEventListener('click', async () => {
       this.showState('sorting');
-      const targetOrder = this.currentSortOrder.map(v => v.id);
 
-      const result = await WLReorder.reorder(targetOrder, (current, total) => {
-        const pct = (current / total) * 100;
-        this.$('#wl-sort-progress').style.width = `${pct}%`;
-        this.$('#wl-sort-count').textContent = `${current} / ${total} videos moved`;
-      });
+      const playlistId = new URL(location.href).searchParams.get('list');
+      const orderedSetVideoIds = this.currentSortOrder.map(v => v.setVideoId);
 
-      if (result.cancelled) {
-        this.showIdleWithMessage('Sort cancelled.');
+      this.$('#wl-sort-count').textContent = `Applying ${orderedSetVideoIds.length} moves...`;
+      this.$('#wl-sort-progress').style.width = '50%';
+
+      let result;
+      try {
+        result = await WLPlaylist.applyOrder(playlistId, orderedSetVideoIds);
+      } catch (err) {
+        this.showError(err.message);
         return;
       }
 
-      if (result && result.moved > 0) {
-        let msg = 'Sort complete.';
-        if (result.failed.length > 0) {
-          msg += ` ${result.failed.length} video${result.failed.length > 1 ? 's' : ''} could not be found.`;
-        }
-        this.showIdleWithMessage(msg);
-      } else {
-        this.showError('Sort failed. Try refreshing the page and sorting again.');
-      }
-    });
+      this.$('#wl-sort-progress').style.width = '100%';
 
-    // Cancel sort
-    this.$('#wl-sort-cancel-btn').addEventListener('click', () => {
-      WLReorder.cancel();
+      if (result.applied) {
+        this.showIdleWithMessage(`Sort complete in ${(result.waitedMs / 1000).toFixed(1)}s.`);
+      } else {
+        this.showError('Sort was sent but the new order did not appear. Reload and check the playlist.');
+      }
     });
 
     // Cancel preview
@@ -290,6 +289,7 @@ const pageObserver = new MutationObserver(() => {
     WLPanel.panel = null;
     WLPanel.currentSortOrder = [];
     WLPanel.lastVideoHash = null;
+    WLInnerTube.resetConfig();
   }
   checkAndInject();
 });

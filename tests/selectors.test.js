@@ -9,13 +9,7 @@ describe('selectors', () => {
     const required = [
       'PLAYLIST_ITEMS',
       'VIDEO_TITLE',
-      'CHANNEL_NAME',
-      'THUMBNAIL',
       'VIDEO_LINK',
-      'DURATION',
-      'PROGRESS_BAR',
-      'MENU_BUTTON',
-      'MOVE_TO_TOP',
     ];
     for (const name of required) {
       assert.ok(code.includes(name), `Missing selector: ${name}`);

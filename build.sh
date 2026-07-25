@@ -14,8 +14,9 @@ mkdir -p dist/chrome dist/firefox
 # Shared files
 SHARED=(
   content/selectors.js
-  content/scraper.js
-  content/reorder.js
+  content/innertube.js
+  content/playlist.js
+  content/enrich.js
   content/panel.js
   styles/content.css
   styles/panel.css
