@@ -117,11 +117,11 @@ describe('WLInnerTube.findAll', () => {
   it('finds values at any depth', () => {
     const api = load();
     const tree = { a: { b: [{ target: 1 }, { c: { target: 2 } }] } };
-    assert.deepEqual(api.findAll(tree, 'target'), [1, 2]);
+    assert.deepEqual([...api.findAll(tree, 'target')], [1, 2]);
   });
 
   it('returns an empty array when the key is absent', () => {
-    assert.deepEqual(load().findAll({ a: 1 }, 'missing'), []);
+    assert.deepEqual([...load().findAll({ a: 1 }, 'missing')], []);
   });
 });
 
@@ -225,7 +225,7 @@ describe('WLInnerTube.pageAll', () => {
 
     const result = await api.pageAll({ browseId: 'VLWL' });
     assert.equal(result.length, 3);
-    assert.deepEqual(result.map(p => p.id), [1, 2, 3]);
+    assert.deepEqual([...result.map(p => p.id)], [1, 2, 3]);
   });
 
   it('stops when a continuation token repeats', async () => {
