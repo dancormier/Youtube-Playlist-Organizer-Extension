@@ -33,8 +33,10 @@ const WLEnrich = {
           const { category, description } = this.extract(response);
           video.category = category;
           video.description = description;
-        } catch {
-          // Leave category/description null — enrichment is best-effort.
+        } catch (err) {
+          // Best-effort: a failed lookup must not fail the sort. Log so a real bug
+          // here doesn't masquerade as "this video simply had no category".
+          console.warn(`[WL] enrichment failed for ${video.id}:`, err);
         }
       }
     };

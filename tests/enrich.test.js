@@ -86,4 +86,31 @@ describe('WLEnrich.enrich', () => {
     await enrich.enrich([{ id: 'a', unavailable: true, category: null, description: null }]);
     assert.equal(calls, 0);
   });
+
+  it('logs failures but continues enriching other videos', async () => {
+    const warns = [];
+    const mockConsole = {
+      warn: (...args) => warns.push(args),
+    };
+    const enrich = loadGlobal('content/enrich.js', 'WLEnrich', {
+      WLInnerTube: {
+        call: async (endpoint, body) => {
+          if (body.videoId === 'b') throw new Error('boom');
+          return playerResponse();
+        },
+      },
+      console: mockConsole,
+    });
+    const videos = [
+      { id: 'a', category: null, description: null },
+      { id: 'b', category: null, description: null },
+      { id: 'c', category: null, description: null },
+    ];
+    await enrich.enrich(videos, { concurrency: 2 });
+    assert.equal(videos[0].category, 'Science & Technology');
+    assert.equal(videos[1].category, null);
+    assert.equal(videos[2].category, 'Science & Technology');
+    assert.equal(warns.length, 1);
+    assert.ok(warns[0][0].includes('enrichment failed for b'), `expected log to include video id 'b', got: ${warns[0][0]}`);
+  });
 });
