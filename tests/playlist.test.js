@@ -113,3 +113,109 @@ describe('WLPlaylist.read', () => {
     assert.deepEqual([...videos.map(v => v.id)], ['a']);
   });
 });
+
+describe('WLPlaylist.buildMoveActions', () => {
+  it('anchors the first item with MOVE_VIDEO_BEFORE', () => {
+    const [first] = load().buildMoveActions(['A', 'B', 'C']);
+    assert.equal(first.action, 'ACTION_MOVE_VIDEO_BEFORE');
+    assert.equal(first.setVideoId, 'A');
+    assert.equal(first.movedSetVideoIdSuccessor, 'B');
+  });
+
+  it('chains every later item after its predecessor', () => {
+    const actions = load().buildMoveActions(['A', 'B', 'C']);
+    assert.equal(actions[1].action, 'ACTION_MOVE_VIDEO_AFTER');
+    assert.equal(actions[1].setVideoId, 'B');
+    assert.equal(actions[1].movedSetVideoIdPredecessor, 'A');
+    assert.equal(actions[2].movedSetVideoIdPredecessor, 'B');
+  });
+
+  it('produces one action per item', () => {
+    assert.equal(load().buildMoveActions(['A', 'B', 'C', 'D']).length, 4);
+  });
+
+  it('returns no actions for lists too short to reorder', () => {
+    assert.deepEqual([...load().buildMoveActions(['A'])], []);
+    assert.deepEqual([...load().buildMoveActions([])], []);
+  });
+
+  it('never omits the anchor, which YouTube treats as a silent no-op', () => {
+    for (const action of load().buildMoveActions(['A', 'B', 'C'])) {
+      const anchored = action.movedSetVideoIdPredecessor || action.movedSetVideoIdSuccessor;
+      assert.ok(anchored, `action for ${action.setVideoId} has no anchor`);
+    }
+  });
+});
+
+describe('WLPlaylist.applyOrder', () => {
+  function withCalls(handlers) {
+    const calls = [];
+    const playlist = load({
+      call: async (endpoint, body) => {
+        calls.push({ endpoint, body });
+        return handlers(endpoint, body, calls.length);
+      },
+      pageAll: async () => [handlers('browse', {}, calls.length)],
+    });
+    return { playlist, calls };
+  }
+
+  it('makes no edit call for a list too short to reorder', async () => {
+    const { playlist, calls } = withCalls((endpoint) =>
+      endpoint === 'browse/edit_playlist'
+        ? { status: 'STATUS_SUCCEEDED' }
+        : { contents: [{ playlistVideoRenderer: renderer({ videoId: 'a', setVideoId: 'A' }) }] }
+    );
+    await playlist.applyOrder('PLx', ['A']);
+    const edits = calls.filter(c => c.endpoint === 'browse/edit_playlist');
+    assert.equal(edits.length, 0);
+  });
+
+  it('batches all actions into one edit_playlist request', async () => {
+    const { playlist, calls } = withCalls((endpoint) =>
+      endpoint === 'browse/edit_playlist'
+        ? { status: 'STATUS_SUCCEEDED' }
+        : {
+            contents: [
+              { playlistVideoRenderer: renderer({ videoId: 'a', setVideoId: 'A' }) },
+              { playlistVideoRenderer: renderer({ videoId: 'b', setVideoId: 'B' }) },
+            ],
+          }
+    );
+    await playlist.applyOrder('PLx', ['A', 'B']);
+    const edits = calls.filter(c => c.endpoint === 'browse/edit_playlist');
+    assert.equal(edits.length, 1);
+    assert.equal(edits[0].body.actions.length, 2);
+    assert.equal(edits[0].body.playlistId, 'PLx');
+  });
+
+  it('reports applied:true once the order matches', async () => {
+    const { playlist } = withCalls((endpoint) =>
+      endpoint === 'browse/edit_playlist'
+        ? { status: 'STATUS_SUCCEEDED' }
+        : {
+            contents: [
+              { playlistVideoRenderer: renderer({ videoId: 'b', setVideoId: 'B' }) },
+              { playlistVideoRenderer: renderer({ videoId: 'a', setVideoId: 'A' }) },
+            ],
+          }
+    );
+    const result = await playlist.applyOrder('PLx', ['B', 'A']);
+    assert.equal(result.applied, true);
+  });
+
+  it('reports applied:false when the order never converges', async () => {
+    const { playlist } = withCalls((endpoint) =>
+      endpoint === 'browse/edit_playlist'
+        ? { status: 'STATUS_SUCCEEDED' }
+        : {
+            contents: [
+              { playlistVideoRenderer: renderer({ videoId: 'a', setVideoId: 'A' }) },
+              { playlistVideoRenderer: renderer({ videoId: 'b', setVideoId: 'B' }) },
+            ],
+          }
+    );
+    const result = await playlist.applyOrder('PLx', ['B', 'A'], { timeoutMs: 50, intervalMs: 10 });
+    assert.equal(result.applied, false);
+  });
+});
