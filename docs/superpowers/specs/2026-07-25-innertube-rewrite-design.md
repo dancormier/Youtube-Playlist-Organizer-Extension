@@ -71,7 +71,7 @@ content/     (globals, load-ordered by manifest)
   storage.js    WLStorage   — overrides, group map
   modal.js      WLModal     — preview overlay
   headings.js   WLHeadings  — divider injection
-  main.js       WLMain      — orchestration + SPA lifecycle
+  panel.js      WLPanel     — trigger button, orchestration, SPA lifecycle
 lib/         (ES modules, background only)
   classify.js   prompt + parse
   sort.js       order builder
@@ -115,7 +115,7 @@ trimmed: content/selectors.js — only what heading injection needs
 - `clear()`
 - Depends on: `selectors.js`
 
-**`WLMain`** — orchestration and SPA lifecycle. The only module that knows the sequence.
+**`WLPanel`** — the existing `content/panel.js`, retained rather than renamed. Owns the trigger button, the orchestration sequence, and SPA lifecycle. The only module that knows the order of operations.
 
 ### Data model
 
@@ -201,7 +201,12 @@ Semver's core (`MAJOR.MINOR.PATCH`) is used. Pre-release and build-metadata suff
 
 ## Testing
 
-**Vitest (automated):**
+**Runner: Node's built-in `node:test`**, matching the existing suite. No Vitest — the repo currently has zero test dependencies and every test here is over pure functions, so a runner dependency would buy nothing.
+
+Run with `node --test tests/*.test.js` (note the glob; bare `node --test tests/` fails).
+
+Content-side modules are globals, not ES modules, so they can't be imported. Existing tests work around this by string-matching source text, which doesn't test behaviour. This plan introduces `tests/helpers/load-global.js`, which evaluates a content script in a `node:vm` sandbox and returns the global it defines — giving real behavioural tests without a bundler.
+
 - `sort.js` — threshold boundary at exactly 10%, overrides, ghost placement, group ordering, empty input
 - `classify.js` — prompt shape, parsing bare JSON and fenced JSON, malformed-response errors, taxonomy adherence
 - `innertube.js` — `SAPISIDHASH` against fixed inputs, continuation-token selection from a captured fixture, config extraction
