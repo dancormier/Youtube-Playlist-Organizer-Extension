@@ -99,6 +99,7 @@ const WLPanel = {
 
         this.$('#wl-analyze-status').textContent = 'Fetching video details...';
         await WLEnrich.enrich(videos);
+        if (this._analyseCancelled) return;
 
         if (!videos || videos.length === 0) {
           this.showError('No videos found on this playlist.');
@@ -212,7 +213,7 @@ const WLPanel = {
       const meta = document.createElement('span');
       meta.className = 'wl-preview-meta';
       meta.textContent = video.cluster === null
-        ? `${this.formatDuration(Math.round(video.duration * (1 - video.progress)))} left`
+        ? `${this.formatDuration(Math.round(video.duration * (1 - video.percentWatched / 100)))} left`
         : this.formatDuration(video.duration);
 
       item.appendChild(title);
