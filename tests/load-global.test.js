@@ -41,4 +41,14 @@ describe('loadGlobal', () => {
       rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('propagates ReferenceError when a different identifier is undefined (regression)', () => {
+    mkdirSync(tmpDir, { recursive: true });
+    writeFileSync(tmpFile, 'const WLFixture = {}; someUndefinedFunction();');
+    try {
+      assert.throws(() => loadGlobal(tmpFile, 'WLFixture'), /someUndefinedFunction is not defined/);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });

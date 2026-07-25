@@ -26,7 +26,11 @@ export function loadGlobal(path, globalName, sandbox = {}) {
   try {
     vm.runInContext(`${code}\n;globalThis[${JSON.stringify(globalName)}] = ${globalName};`, context);
   } catch (err) {
-    if (err.code === 'ERR_SCRIPT_EXECUTION_INTERRUPTED' || err.message.includes('is not defined')) {
+    // Only convert ReferenceError if it's about the specific global we're looking for.
+    // Errors from vm context won't match instanceof ReferenceError, so check err.name.
+    // Build a pattern to match exactly: "WLFixture is not defined" (where WLFixture is the globalName).
+    const globalPattern = new RegExp(`^${globalName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} is not defined$`);
+    if (err.name === 'ReferenceError' && globalPattern.test(err.message)) {
       throw new Error(`${path} did not define ${globalName}`);
     }
     throw err;
