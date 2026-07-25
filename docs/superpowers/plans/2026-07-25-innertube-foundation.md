@@ -2170,6 +2170,19 @@ And remove the cancel button from the sorting state's `innerHTML`:
         <button class="wl-yt-btn wl-cancel-inline" id="wl-sort-cancel-btn">Cancel</button>
 ```
 
+- [ ] **Step 7b: Invalidate cached InnerTube config on SPA navigation**
+
+`WLInnerTube` memoizes client config, and the content script survives YouTube's
+in-app navigation. Switching Google accounts changes `DELEGATED_SESSION_ID`, so a
+stale cache would send edits with the wrong session.
+
+In `content/panel.js`, inside the `pageObserver` callback where a URL change is
+detected, immediately after `WLPanel.lastVideoHash = null;` add:
+
+```js
+    WLInnerTube.resetConfig();
+```
+
 - [ ] **Step 8: Delete the DOM automation modules**
 
 ```bash
