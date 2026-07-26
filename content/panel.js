@@ -10,7 +10,7 @@ const WLPanel = {
   inject() {
     if (document.querySelector('#wl-organizer-panel')) return;
 
-    const anchorResult = findAnchor();
+    const anchorResult = this.findAnchor();
     if (!anchorResult) return;
 
     const panel = document.createElement('div');
@@ -248,52 +248,86 @@ const WLPanel = {
       this.panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   },
+
+  /**
+   * Locate where the panel should mount.
+   * Deliberately does NOT check layout: on Watch Later the header exists before
+   * it is laid out, and treating a 0x0 rect as "absent" meant the panel never
+   * appeared until some unrelated mutation retriggered injection.
+   */
+  findAnchor() {
+    const wlAnchor = document.querySelector(
+      '.thumbnail-and-metadata-wrapper.style-scope.ytd-playlist-header-renderer'
+    );
+    if (wlAnchor) return { el: wlAnchor, position: 'after' };
+
+    const sidebarFlexActions = document.querySelector(
+      '.page-header-sidebar yt-flexible-actions-view-model'
+    );
+    if (sidebarFlexActions) return { el: sidebarFlexActions, position: 'inside' };
+
+    return null;
+  },
 };
 
-// Inject panel when page is ready
-function findAnchor() {
-  // Watch Later page
-  const wlAnchor = document.querySelector('.thumbnail-and-metadata-wrapper.style-scope.ytd-playlist-header-renderer');
-  if (wlAnchor) {
-    const rect = wlAnchor.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) return { el: wlAnchor, position: 'after' };
+function checkAndInject() {
+  if (!location.pathname.startsWith('/playlist')) return false;
+  if (document.querySelector('#wl-organizer-panel')) return true;
+
+  if (WLPanel.findAnchor()) {
+    WLPanel.inject();
+    return true;
   }
-
-  // Regular playlists — append inside the sidebar header's flexible actions
-  const sidebarFlexActions = document.querySelector('.page-header-sidebar yt-flexible-actions-view-model');
-  if (sidebarFlexActions) return { el: sidebarFlexActions, position: 'inside' };
-
-  return null;
+  return false;
 }
 
-// Handle YouTube SPA navigation — re-inject panel when URL changes
+/**
+ * Poll briefly for the anchor. Mutation events alone are not enough: YouTube can
+ * finish rendering in a batch we already processed, and once the page settles no
+ * further mutations arrive, so a missed injection is never retried.
+ */
+function injectWithRetry({ intervalMs = 300, timeoutMs = 15000 } = {}) {
+  if (checkAndInject()) return;
+
+  const started = Date.now();
+  const timer = setInterval(() => {
+    if (checkAndInject() || Date.now() - started > timeoutMs) {
+      clearInterval(timer);
+    }
+  }, intervalMs);
+}
+
+function resetForNavigation() {
+  const oldPanel = document.querySelector('#wl-organizer-panel');
+  if (oldPanel) oldPanel.remove();
+  WLPanel.panel = null;
+  WLPanel.currentSortOrder = [];
+  WLPanel.lastVideoHash = null;
+  WLInnerTube.resetConfig();
+}
+
 let lastUrl = location.href;
 
-function checkAndInject() {
-  if (!location.pathname.startsWith('/playlist')) return;
-  if (!document.querySelector('#wl-organizer-panel')) {
-    const anchor = findAnchor();
-    if (anchor) {
-      WLPanel.inject();
-    }
-  }
-}
-
-// Observe DOM changes to detect both initial render and SPA navigations
 const pageObserver = new MutationObserver(() => {
-  const currentUrl = location.href;
-  if (currentUrl !== lastUrl) {
-    lastUrl = currentUrl;
-    // URL changed — remove old panel if present, reset state
-    const oldPanel = document.querySelector('#wl-organizer-panel');
-    if (oldPanel) oldPanel.remove();
-    WLPanel.panel = null;
-    WLPanel.currentSortOrder = [];
-    WLPanel.lastVideoHash = null;
-    WLInnerTube.resetConfig();
+  if (location.href !== lastUrl) {
+    lastUrl = location.href;
+    resetForNavigation();
+    injectWithRetry();
+    return;
   }
   checkAndInject();
 });
 
 pageObserver.observe(document.body, { childList: true, subtree: true });
-checkAndInject();
+
+// YouTube fires this after SPA navigation completes — more reliable than
+// inferring navigation from mutations alone.
+window.addEventListener('yt-navigate-finish', () => {
+  if (location.href !== lastUrl) {
+    lastUrl = location.href;
+    resetForNavigation();
+  }
+  injectWithRetry();
+});
+
+injectWithRetry();

@@ -73,6 +73,13 @@ function loadPanel(sandbox = {}) {
     WLPlaylist: {},
     WLEnrich: {},
     chrome: { runtime: { sendMessage: async () => ({ success: true, sortOrder: [] }) } },
+    // injectWithRetry() runs at load time and reaches for these even when
+    // checkAndInject() bails out early (non-/playlist pathname) — it still
+    // schedules the retry interval. Stub them so load-time execution doesn't
+    // throw or start a real timer.
+    setInterval: () => 0,
+    clearInterval: () => {},
+    window: { addEventListener: () => {} },
     ...sandbox,
   });
 }
@@ -159,5 +166,44 @@ describe('WLPanel analyze — cancellation during enrichment (CRITICAL 2 regress
     await panel.querySelector('#wl-analyze-btn').listeners['click']();
 
     assert.equal(sendMessageCalls.length, 1, 'a normal (non-cancelled) analyze should still reach ANALYZE');
+  });
+});
+
+describe('findAnchor', () => {
+  function withDom(elements) {
+    // Minimal document stub: querySelector returns the first matching key.
+    return {
+      querySelector: (sel) => elements[sel] || null,
+      querySelectorAll: () => [],
+      addEventListener: () => {},
+      body: { appendChild: () => {} },
+      documentElement: { innerHTML: '' },
+    };
+  }
+
+  it('returns the Watch Later anchor even when it has no layout yet', () => {
+    const wlAnchor = {
+      getBoundingClientRect: () => ({ width: 0, height: 0 }),
+      parentNode: {},
+    };
+    const doc = withDom({
+      '.thumbnail-and-metadata-wrapper.style-scope.ytd-playlist-header-renderer': wlAnchor,
+    });
+    const panel = loadPanel({ document: doc });
+    const anchor = panel.findAnchor();
+    assert.ok(anchor, 'a zero-size element is still a valid anchor');
+    assert.equal(anchor.position, 'after');
+  });
+
+  it('falls back to the sidebar anchor when no playlist header exists', () => {
+    const sidebar = { getBoundingClientRect: () => ({ width: 100, height: 40 }) };
+    const doc = withDom({ '.page-header-sidebar yt-flexible-actions-view-model': sidebar });
+    const panel = loadPanel({ document: doc });
+    assert.equal(panel.findAnchor().position, 'inside');
+  });
+
+  it('returns null when neither anchor is present', () => {
+    const panel = loadPanel({ document: withDom({}) });
+    assert.equal(panel.findAnchor(), null);
   });
 });
