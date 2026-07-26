@@ -4,7 +4,14 @@
 const WLPanel = {
   panel: null,
   currentSortOrder: [],
-  _analyseCancelled: false,
+  // Monotonic run token. Each runSort() call takes ownership by bumping this and
+  // capturing the new value; every async checkpoint inside that run compares its
+  // captured id back against the live counter. Cancelling, starting a different
+  // mode, or navigating away all bump the counter, so a stale run's checkpoints
+  // see a mismatch and stop rendering into a panel they no longer own. A single
+  // boolean couldn't express this: resetting it for one run silently un-cancels
+  // any other in-flight run.
+  _runId: 0,
 
   inject() {
     if (document.querySelector('#wl-organizer-panel')) return;
@@ -89,7 +96,7 @@ const WLPanel = {
 
     // Cancel analyze
     this.$('#wl-analyze-cancel-btn').addEventListener('click', () => {
-      this._analyseCancelled = true;
+      this._runId++;
       this.showState('idle');
     });
 
@@ -142,7 +149,7 @@ const WLPanel = {
    * skips enrichment entirely since nothing consumes the metadata.
    */
   async runSort(mode) {
-    this._analyseCancelled = false;
+    const runId = ++this._runId;
     this.showState('analyzing');
     this.$('#wl-analyze-status').textContent = 'Scanning videos...';
 
@@ -154,7 +161,7 @@ const WLPanel = {
       }
 
       const videos = await WLPlaylist.read(playlistId);
-      if (this._analyseCancelled) return;
+      if (runId !== this._runId) return;
 
       if (!videos || videos.length === 0) {
         this.showError('No videos found on this playlist.');
@@ -165,7 +172,7 @@ const WLPanel = {
       if (mode === 'ai') {
         this.$('#wl-analyze-status').textContent = 'Fetching video details...';
         await WLEnrich.enrich(videos);
-        if (this._analyseCancelled) return;
+        if (runId !== this._runId) return;
 
         this.$('#wl-analyze-status').textContent = 'Categorizing with AI...';
         result = await chrome.runtime.sendMessage({ type: 'ANALYZE', videos, playlistId });
@@ -173,7 +180,7 @@ const WLPanel = {
         this.$('#wl-analyze-status').textContent = 'Sorting by duration...';
         result = await chrome.runtime.sendMessage({ type: 'SORT_BY_DURATION', videos });
       }
-      if (this._analyseCancelled) return;
+      if (runId !== this._runId) return;
 
       if (!result.success) {
         this.showError(result.error);
@@ -183,7 +190,9 @@ const WLPanel = {
       this.renderPreview(result.sortOrder);
       this.showState('preview');
     } catch (err) {
-      if (!this._analyseCancelled) this.showError(err.message);
+      // A superseded run (cancelled, mode-switched, or navigated away from) must not
+      // paint an error over whatever the current run has already rendered.
+      if (runId === this._runId) this.showError(err.message);
     }
   },
 
@@ -306,8 +315,13 @@ function injectWithRetry({ intervalMs = 300, timeoutMs = 15000 } = {}) {
 
   const started = Date.now();
   const timer = setInterval(() => {
-    if (checkAndInject() || Date.now() - started > timeoutMs) {
+    if (checkAndInject()) {
       clearInterval(timer);
+      return;
+    }
+    if (Date.now() - started > timeoutMs) {
+      clearInterval(timer);
+      console.warn(`[WL Organizer] Gave up waiting for a mount anchor after ${timeoutMs}ms — no anchor found on ${location.href}`);
     }
   }, intervalMs);
 }
@@ -317,6 +331,9 @@ function resetForNavigation() {
   if (oldPanel) oldPanel.remove();
   WLPanel.panel = null;
   WLPanel.currentSortOrder = [];
+  // Invalidate any run still in flight for the old playlist so it cannot render
+  // into (or Apply against) the freshly-reset panel once it resolves.
+  WLPanel._runId++;
   WLInnerTube.resetConfig();
 }
 

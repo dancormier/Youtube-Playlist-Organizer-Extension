@@ -135,8 +135,9 @@ describe('WLPanel analyze — cancellation during enrichment (CRITICAL 2 regress
       WLPlaylist: { read: async () => videos },
       WLEnrich: {
         // Enrichment is the longest phase (one `player` call per video), so it's the
-        // realistic window for a user's Cancel click to land. Simulate that here.
-        enrich: async () => { WLPanel._analyseCancelled = true; },
+        // realistic window for a user's Cancel click to land. Simulate that here by
+        // bumping the run token, exactly what the Cancel button handler does.
+        enrich: async () => { WLPanel._runId++; },
       },
     });
 
@@ -385,5 +386,91 @@ describe('post-sort reload', () => {
 
     await panel.applySort();
     assert.equal(reloaded, false, 'a failed sort must leave the error on screen');
+  });
+});
+
+describe('runSort — stale run supersession (run token)', () => {
+  // Both scenarios below drive the SAME WLPanel instance through two overlapping
+  // runSort() calls, the way a real Cancel-then-switch-modes or navigate-mid-sort
+  // sequence would. Run A is parked on a controllable deferred promise so run B can
+  // start, finish, and render before A is allowed to resume — proving A's late
+  // arrival is a no-op rather than a race that sometimes passes.
+
+  it('a superseded run does not call renderPreview — the newer run\'s order wins', async () => {
+    let resolveA;
+    let signalReachedA;
+    const deferredA = new Promise((resolve) => { resolveA = resolve; });
+    // Resolves the instant run A's ANALYZE call is in flight and awaiting deferredA,
+    // so the test can deterministically wait for that exact checkpoint instead of
+    // guessing how many microtask ticks read()/enrich() take to settle.
+    const reachedA = new Promise((resolve) => { signalReachedA = resolve; });
+
+    const panel = loadPanelWithStubs({
+      sendMessage: async (msg) => {
+        if (msg.type === 'ANALYZE') {
+          // Run A (ai mode) blocks here until the test lets it through.
+          signalReachedA();
+          await deferredA;
+          return { success: true, sortOrder: [{ id: 'a', setVideoId: 'A', cluster: 'Topic', duration: 60 }] };
+        }
+        // Run B (duration mode) resolves immediately.
+        return { success: true, sortOrder: [{ id: 'b', setVideoId: 'B', cluster: null, duration: 30, percentWatched: 0 }] };
+      },
+      enrich: async () => {},
+      videos: [{ id: 'x', setVideoId: 'X', duration: 60, percentWatched: 0 }],
+    });
+
+    const runA = panel.runSort('ai'); // starts; will park inside the ANALYZE sendMessage call
+    await reachedA; // wait until A is actually parked, not just "started"
+    await panel.runSort('duration'); // supersedes A (bumps _runId) and completes fully
+
+    assert.deepEqual(
+      panel.currentSortOrder.map(v => v.setVideoId),
+      ['B'],
+      'run B should have rendered its own order'
+    );
+
+    resolveA(); // let A resume — its runId no longer matches WLPanel._runId
+    await runA;
+
+    assert.deepEqual(
+      panel.currentSortOrder.map(v => v.setVideoId),
+      ['B'],
+      'a superseded run must not overwrite a newer run\'s rendered order'
+    );
+  });
+
+  it('a superseded run does not call showError when it fails after being superseded', async () => {
+    let rejectA;
+    let signalReachedA;
+    const deferredA = new Promise((_resolve, reject) => { rejectA = reject; });
+    const reachedA = new Promise((resolve) => { signalReachedA = resolve; });
+    const errorCalls = [];
+
+    const panel = loadPanelWithStubs({
+      sendMessage: async (msg) => {
+        if (msg.type === 'ANALYZE') {
+          signalReachedA();
+          await deferredA; // will reject once the test triggers it
+        }
+        return { success: true, sortOrder: [{ id: 'b', setVideoId: 'B', cluster: null, duration: 30, percentWatched: 0 }] };
+      },
+      enrich: async () => {},
+      videos: [{ id: 'x', setVideoId: 'X', duration: 60, percentWatched: 0 }],
+    });
+    panel.showError = (msg) => { errorCalls.push(msg); };
+
+    const runA = panel.runSort('ai'); // starts; will park inside the ANALYZE sendMessage call
+    await reachedA; // wait until A is actually parked, not just "started"
+    await panel.runSort('duration'); // supersedes A (bumps _runId) and completes fully
+
+    rejectA(new Error('boom')); // A's sendMessage now throws, caught by runSort's catch block
+    await runA;
+
+    assert.equal(
+      errorCalls.length,
+      0,
+      'a superseded run must not paint an error over a newer run\'s preview'
+    );
   });
 });
