@@ -69,6 +69,31 @@ describe('WLHeadings.boundariesFrom', () => {
     ]);
     assert.equal(boundaries.length, 2);
   });
+
+  it('returns an empty array for duration-mode videos (no cluster property at all)', () => {
+    // buildDurationSortOrder (lib/sort.js) returns videos with no `cluster` key
+    // at all — not even `cluster: undefined`. Regression: this used to produce
+    // a boundary named the string "undefined", which rendered a nameless
+    // heading bar and, because _headingFor()'s lookup could never match it,
+    // duplicated without bound on every observer-driven inject() pass.
+    const boundaries = load().boundariesFrom([
+      { id: 'a', title: 'T', duration: 60 },
+      { id: 'b', title: 'T', duration: 90 },
+    ]);
+    assert.deepEqual([...boundaries], []);
+  });
+});
+
+describe('WLHeadings.IN_PROGRESS_LABEL constant drift', () => {
+  it('matches WLModal.IN_PROGRESS_LABEL byte-for-byte', () => {
+    // Critical 1 was caused by exactly this seam: the two modules each define
+    // their own copy of this label independently, and headings.js's copy of
+    // the *logic* (not just the string) fell out of sync with modal.js's. This
+    // guards the constant so at least that half of the seam can't drift silently.
+    const WLHeadings = load();
+    const WLModal = loadGlobal('content/modal.js', 'WLModal', { document: undefined });
+    assert.equal(WLHeadings.IN_PROGRESS_LABEL, WLModal.IN_PROGRESS_LABEL);
+  });
 });
 
 describe('WLHeadings.hashIds', () => {

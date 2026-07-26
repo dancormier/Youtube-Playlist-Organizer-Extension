@@ -9,12 +9,18 @@ const WLHeadings = {
   _boundaries: [],
   _debounce: null,
 
-  /** One entry per group, naming the video that starts it and how many it holds. */
+  /**
+   * One entry per group, naming the video that starts it and how many it holds.
+   * A video with no `cluster` property at all (duration mode — see
+   * lib/sort.js's buildDurationSortOrder) gets no heading, mirroring
+   * WLModal.toGroups's handling of the same case.
+   */
   boundariesFrom(sortOrder) {
     const boundaries = [];
     let current = null;
 
     for (const video of sortOrder) {
+      if (!('cluster' in video)) continue;
       const name = video.cluster === null ? this.IN_PROGRESS_LABEL : video.cluster;
       if (!current || current.name !== name) {
         current = { videoId: video.id, name, count: 0 };

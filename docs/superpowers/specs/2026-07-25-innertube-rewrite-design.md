@@ -240,6 +240,6 @@ Content-side modules are globals, not ES modules, so they can't be imported. Exi
 
 ## Shipped
 
-**0.6.0 (2026-07-25)** — InnerTube data path (replacing DOM scraping), modal preview overlay (replacing sidebar), unwatched overrides with toggle UI, playlist group headings with auto-inject and persistence, floating trigger button (replacing header-injected panel), explicit sort modes (ascending and descending), auto-reload after confirmed sort. Watch-history deletion abandoned; YouTube's red progress bar cannot be cleared.
+**0.6.0 (2026-07-25)** — InnerTube data path (replacing DOM scraping), modal preview overlay (replacing sidebar), unwatched overrides with toggle UI, playlist group headings with auto-inject and persistence, floating trigger button (replacing header-injected panel), explicit sort modes (AI topic grouping and duration sort), auto-reload after confirmed sort. Watch-history deletion abandoned; YouTube's red progress bar cannot be cleared.
 
 **Manual browser verification is outstanding and should be completed by the project owner.**

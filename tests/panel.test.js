@@ -311,6 +311,37 @@ describe('applySort — post-sort reload', () => {
       'a superseded apply must not announce success into a newer session'
     );
   });
+
+  it('does not reload when the run token changes before the reload timer fires', async () => {
+    // The ownership check that gates scheduling the timer is not enough: if
+    // the user clicks into a video within the 1.2s window (bumping _runId the
+    // same way resetForNavigation() does), the timer must not fire a reload
+    // for the page the user already left.
+    let reloaded = false;
+    let scheduledFn;
+
+    const WLPanel = loadPanel({
+      WLPlaylist: { applyOrder: async () => ({ applied: true, waitedMs: 1200 }) },
+      WLHeadings: {
+        boundariesFrom: () => [],
+        hashIds: () => 'hash',
+        watch() {}, stop() {}, clear() {},
+      },
+      WLStorage: { setGroupMap: async () => {}, getGroupMap: async () => ({}) },
+      location: { ...locationStub, reload: () => { reloaded = true; } },
+      setTimeout: (fn) => { scheduledFn = fn; return 1; },
+    });
+    WLPanel.currentSortOrder = [{ id: 'a', setVideoId: 'A' }];
+    WLPanel.currentPlaylistId = 'WL';
+
+    await WLPanel.applySort();
+    assert.ok(scheduledFn, 'setup: applySort must schedule a reload timer');
+
+    WLPanel._runId++; // simulate navigating within the 1.2s window
+    scheduledFn(); // the timer fires now that a newer session owns the token
+
+    assert.equal(reloaded, false, 'the reload callback must re-check ownership when it fires, not just when scheduled');
+  });
 });
 
 describe('applySort — group map persistence', () => {
@@ -340,6 +371,38 @@ describe('applySort — group map persistence', () => {
 
     assert.deepEqual(events, ['setGroupMap-called', 'setGroupMap-resolved', 'reload']);
     assert.equal(persistedMap.playlistId, 'WL');
+  });
+
+  it('persists nothing in duration mode, where boundariesFrom returns an empty array', async () => {
+    // buildDurationSortOrder videos carry no `cluster` key at all, so the real
+    // WLHeadings.boundariesFrom(...) returns []. Storing an empty grouping is
+    // meaningless and would leave restoreHeadings() with nothing useful to
+    // restore, so applySort must skip the write entirely in that case. Uses
+    // loadPanel() directly (not loadPanelWithStubs, whose default
+    // WLHeadings.boundariesFrom stub just echoes the order back) so the
+    // empty-boundaries case can actually be exercised.
+    let setGroupMapCalled = false;
+
+    const WLPanel = loadPanel({
+      WLPlaylist: { applyOrder: async () => ({ applied: true, waitedMs: 1200 }) },
+      WLHeadings: {
+        boundariesFrom: () => [],
+        hashIds: () => 'hash',
+        watch() {}, stop() {}, clear() {},
+      },
+      WLStorage: {
+        setGroupMap: async () => { setGroupMapCalled = true; },
+        getGroupMap: async () => ({}),
+      },
+      location: { ...locationStub, reload: () => {} },
+      setTimeout: (fn) => { fn(); return 0; },
+    });
+    WLPanel.currentSortOrder = [{ id: 'a', setVideoId: 'A', duration: 60 }];
+    WLPanel.currentPlaylistId = 'WL';
+
+    await WLPanel.applySort();
+
+    assert.equal(setGroupMapCalled, false, 'a duration-mode apply must not persist an empty group map');
   });
 
   it('persists nothing when the apply did not converge', async () => {
@@ -552,6 +615,56 @@ describe('restoreHeadings', () => {
       console.warn = originalWarn;
     }
   });
+
+  it('does not call WLHeadings.watch when the run token changes while WLPlaylist.read is pending', async () => {
+    // restoreHeadings() is fire-and-forget from syncTrigger() and awaits a
+    // multi-page network call (WLPlaylist.read) before re-arming the
+    // observer. resetForNavigation() bumps _runId but has no way to cancel
+    // this in-flight call, so restoreHeadings must re-check ownership itself
+    // right before watch() — otherwise a late continuation re-arms the
+    // observer with a stale (or, after navigating off the playlist entirely,
+    // permanently dangling) boundaries set.
+    let watchCalled = false;
+    let resolveRead;
+    let signalReachedRead;
+    const deferredRead = new Promise((resolve) => { resolveRead = resolve; });
+    const reachedRead = new Promise((resolve) => { signalReachedRead = resolve; });
+
+    const WLPanel = loadPanel({
+      WLStorage: {
+        getGroupMap: async () => ({
+          playlistId: 'WL',
+          boundaries: [{ videoId: 'a', name: 'Music', count: 1 }],
+          videoIdsHash: 'match',
+        }),
+        setGroupMap: async () => {},
+      },
+      WLPlaylist: {
+        read: async () => {
+          signalReachedRead();
+          return deferredRead;
+        },
+      },
+      WLHeadings: {
+        boundariesFrom: () => [],
+        hashIds: () => 'match',
+        watch: () => { watchCalled = true; },
+        stop() {},
+        clear() {},
+      },
+    });
+
+    const restore = WLPanel.restoreHeadings(); // parks inside WLPlaylist.read
+    await reachedRead;
+
+    // Simulate resetForNavigation() firing mid-flight.
+    WLPanel._runId++;
+
+    resolveRead([{ id: 'a' }]);
+    await restore;
+
+    assert.equal(watchCalled, false, 'a stale restoreHeadings must not re-arm the observer after navigation');
+  });
 });
 
 describe('toggleUnwatched', () => {
@@ -620,5 +733,22 @@ describe('toggleUnwatched', () => {
 
     assert.deepEqual(modalCalls.showPreview, [], 'a superseded toggle must not render into a newer session');
     assert.deepEqual(WLPanel.currentSortOrder, staleOrder, 'a superseded toggle must not overwrite currentSortOrder');
+  });
+
+  it('shows an error and does not throw when sendMessage rejects', async () => {
+    // toggleUnwatched() was the only orchestration method without a
+    // try/catch, and the modal invokes it fire-and-forget — a rejection
+    // (e.g. "Extension context invalidated" after an extension reload) would
+    // otherwise be an unhandled rejection with the modal stuck on
+    // "Re-sorting..." forever.
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async () => { throw new Error('Extension context invalidated'); },
+      toggleOverride: async () => ['v1'],
+      playlistId: 'PL123',
+    });
+
+    await assert.doesNotReject(() => WLPanel.toggleUnwatched('v1'));
+
+    assert.deepEqual(modalCalls.showError, ['Extension context invalidated']);
   });
 });

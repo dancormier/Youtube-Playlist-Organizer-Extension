@@ -73,18 +73,26 @@ const WLPanel = {
     const runId = this._runId;
     WLModal.setStatus('Re-sorting...');
 
-    const overrides = await WLStorage.toggleOverride(videoId);
-    if (runId !== this._runId) return;
+    try {
+      const overrides = await WLStorage.toggleOverride(videoId);
+      if (runId !== this._runId) return;
 
-    const result = await chrome.runtime.sendMessage({
-      type: 'RESORT', overrides, playlistId: this.currentPlaylistId,
-    });
-    if (runId !== this._runId) return;
+      const result = await chrome.runtime.sendMessage({
+        type: 'RESORT', overrides, playlistId: this.currentPlaylistId,
+      });
+      if (runId !== this._runId) return;
 
-    if (!result.success) { WLModal.showError(result.error); return; }
+      if (!result.success) { WLModal.showError(result.error); return; }
 
-    this.currentSortOrder = result.sortOrder;
-    WLModal.showPreview(result.sortOrder);
+      this.currentSortOrder = result.sortOrder;
+      WLModal.showPreview(result.sortOrder);
+    } catch (err) {
+      // The modal invokes this fire-and-forget, so an uncaught rejection here
+      // is invisible to the user — the everyday trigger is "Extension context
+      // invalidated" after an extension reload, which would otherwise leave
+      // the modal stuck on "Re-sorting..." forever.
+      if (runId === this._runId) WLModal.showError(err.message);
+    }
   },
 
   /**
@@ -115,14 +123,21 @@ const WLPanel = {
       // already succeeded — so a storage failure here must not block the reload
       // or leave the modal stuck. It gets its own try/catch rather than joining
       // the applyOrder one, and failure is logged but otherwise swallowed.
-      try {
-        await WLStorage.setGroupMap({
-          playlistId,
-          boundaries: WLHeadings.boundariesFrom(this.currentSortOrder),
-          videoIdsHash: WLHeadings.hashIds(this.currentSortOrder),
-        });
-      } catch (err) {
-        console.warn('WLPanel: failed to persist group map; headings will not restore after reload', err);
+      // Duration-mode sorts yield an empty boundaries array (no `cluster` key
+      // at all on any video — see WLHeadings.boundariesFrom). Storing an empty
+      // grouping is meaningless and would just give restoreHeadings() nothing
+      // useful to restore, so skip the write entirely in that case.
+      const boundaries = WLHeadings.boundariesFrom(this.currentSortOrder);
+      if (boundaries.length > 0) {
+        try {
+          await WLStorage.setGroupMap({
+            playlistId,
+            boundaries,
+            videoIdsHash: WLHeadings.hashIds(this.currentSortOrder),
+          });
+        } catch (err) {
+          console.warn('WLPanel: failed to persist group map; headings will not restore after reload', err);
+        }
       }
       // Re-check ownership: the await above is a window resetForNavigation()'s
       // synchronous _runId bump can land in, same as every other await in this
@@ -132,8 +147,11 @@ const WLPanel = {
 
       WLModal.showBusy(`Sort complete in ${(result.waitedMs / 1000).toFixed(1)}s. Refreshing...`);
       // YouTube's DOM does not reflect the reordered playlist, so a successful
-      // sort otherwise looks like nothing happened.
-      setTimeout(() => location.reload(), 1200);
+      // sort otherwise looks like nothing happened. Re-check ownership inside
+      // the callback itself, not just when scheduling it — the 1.2s window is
+      // long enough for the user to click into a video and navigate away, and
+      // without this the timer would reload the page they just opened.
+      setTimeout(() => { if (runId === this._runId) location.reload(); }, 1200);
     } else {
       WLModal.showError('Sort was sent but the new order did not appear. Reload and check the playlist.');
     }
@@ -159,6 +177,7 @@ const WLPanel = {
    * must not throw — an unhandled rejection is the only other outcome.
    */
   async restoreHeadings() {
+    const runId = this._runId;
     const playlistId = new URL(location.href).searchParams.get('list');
     if (!playlistId || this._headingsRestoredFor === playlistId) return;
     this._headingsRestoredFor = playlistId;
@@ -170,6 +189,7 @@ const WLPanel = {
       console.warn('WLPanel: failed to read stored group map', err);
       return;
     }
+    if (runId !== this._runId) return;
     if (!stored.boundaries || stored.playlistId !== playlistId) return;
 
     let videos;
@@ -178,6 +198,7 @@ const WLPanel = {
     } catch {
       return; // Offline or API broken — headings simply don't restore.
     }
+    if (runId !== this._runId) return;
 
     if (WLHeadings.hashIds(videos) !== stored.videoIdsHash) {
       try {
@@ -187,6 +208,13 @@ const WLPanel = {
       }
       return;
     }
+    // Final re-check immediately before re-arming the observer: this is a
+    // multi-page network call (WLPlaylist.read), and resetForNavigation() can
+    // bump _runId at any point during it. Without this, a late continuation
+    // could watch() with the previous playlist's boundaries, or re-attach a
+    // document.body observer after navigating to a non-playlist page — one
+    // that would then survive the rest of the session.
+    if (runId !== this._runId) return;
     WLHeadings.watch(stored.boundaries);
   },
 };
