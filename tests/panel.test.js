@@ -207,3 +207,92 @@ describe('findAnchor', () => {
     assert.equal(panel.findAnchor(), null);
   });
 });
+
+describe('checkAndInject — stale panel self-heal (navigation event-ordering)', () => {
+  // yt-navigate-finish can fire before location.href actually updates. When that
+  // happens, both the MutationObserver branch and the yt-navigate-finish handler skip
+  // resetForNavigation() because `location.href !== lastUrl` is still false at the
+  // moment they run. Without a second line of defense, checkAndInject() would then see
+  // the old #wl-organizer-panel, short-circuit, and leave the panel bound to the
+  // previous playlist — with WLInnerTube.resetConfig() never called, so a stale
+  // DELEGATED_SESSION_ID could survive an account switch. This test drives the real
+  // entry point (checkAndInject) rather than lastUrl bookkeeping, to prove the healing
+  // is self-contained and doesn't depend on event ordering.
+  it('removes a panel tagged for a different playlist and resets InnerTube config', () => {
+    let panelEl = null;
+    const removeCalls = [];
+    const resetConfigCalls = [];
+
+    const anchorEl = {
+      getBoundingClientRect: () => ({ width: 0, height: 0 }),
+      parentNode: { insertBefore: () => {} },
+    };
+
+    // A mutable location stub: real navigation mutates `location.href` in place,
+    // which is exactly the case that skips lastUrl-based resets when event ordering
+    // is unlucky.
+    const loc = {
+      href: 'https://www.youtube.com/playlist?list=A',
+      pathname: '/playlist',
+      search: '?list=A',
+    };
+
+    const doc = {
+      querySelector: (sel) => {
+        if (sel === '#wl-organizer-panel') return panelEl;
+        if (sel === '.thumbnail-and-metadata-wrapper.style-scope.ytd-playlist-header-renderer') return anchorEl;
+        return null;
+      },
+      querySelectorAll: () => [],
+      addEventListener: () => {},
+      body: { appendChild: () => {} },
+      documentElement: { innerHTML: '' },
+      createElement: () => {
+        const registry = new Map();
+        const el = {
+          id: '',
+          innerHTML: '',
+          dataset: {},
+          remove: () => { removeCalls.push(el.dataset.wlPlaylist); panelEl = null; },
+          querySelector(sel) {
+            if (!registry.has(sel)) registry.set(sel, { addEventListener: () => {} });
+            return registry.get(sel);
+          },
+        };
+        panelEl = el;
+        return el;
+      },
+    };
+
+    // Loading with pathname '/playlist' means injectWithRetry() actually injects at
+    // load time (through the real inject() path), tagging the panel for playlist A —
+    // this exercises the tagging added to inject(), not just a hand-built fixture.
+    const checkAndInject = loadGlobal('content/panel.js', 'checkAndInject', {
+      document: doc,
+      location: loc,
+      MutationObserver: MutationObserverStub,
+      WLInnerTube: { resetConfig: () => resetConfigCalls.push(true) },
+      WLPlaylist: {},
+      WLEnrich: {},
+      chrome: { runtime: { sendMessage: async () => ({ success: true, sortOrder: [] }) } },
+      setInterval: () => 0,
+      clearInterval: () => {},
+      window: { addEventListener: () => {} },
+    });
+
+    assert.ok(panelEl, 'panel should have been injected for playlist A at load time');
+    assert.equal(panelEl.dataset.wlPlaylist, 'A');
+    assert.equal(resetConfigCalls.length, 0, 'a fresh injection is not a navigation reset');
+
+    // Simulate the URL moving to playlist B without any reset having run yet.
+    loc.href = 'https://www.youtube.com/playlist?list=B';
+    loc.search = '?list=B';
+
+    const result = checkAndInject();
+
+    assert.equal(result, true);
+    assert.deepEqual(removeCalls, ['A'], 'the panel tagged for playlist A should be removed exactly once');
+    assert.equal(resetConfigCalls.length, 1, 'WLInnerTube.resetConfig() must run so a stale session id cannot survive the navigation');
+    assert.equal(panelEl.dataset.wlPlaylist, 'B', 're-injection should tag the new panel for the current playlist');
+  });
+});

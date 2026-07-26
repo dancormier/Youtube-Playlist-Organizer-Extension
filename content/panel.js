@@ -60,6 +60,10 @@ const WLPanel = {
     } else {
       anchorResult.el.parentNode.insertBefore(panel, anchorResult.el.nextSibling);
     }
+    // Tag the panel with the playlist it was built for. checkAndInject() uses this
+    // to self-heal when navigation reset was skipped (e.g. yt-navigate-finish firing
+    // before location.href updates) rather than depending on lastUrl tracking alone.
+    panel.dataset.wlPlaylist = new URL(location.href).searchParams.get('list') || '';
     this.panel = panel;
     this.bindEvents();
   },
@@ -272,7 +276,20 @@ const WLPanel = {
 
 function checkAndInject() {
   if (!location.pathname.startsWith('/playlist')) return false;
-  if (document.querySelector('#wl-organizer-panel')) return true;
+
+  const existing = document.querySelector('#wl-organizer-panel');
+  if (existing) {
+    // Self-heal against event-ordering: normally resetForNavigation() clears the
+    // panel before this runs, but yt-navigate-finish can fire before location.href
+    // updates, and a missed reset here would silently bind to the wrong playlist
+    // (and skip WLInnerTube.resetConfig(), risking edits sent to a stale account).
+    const currentPlaylistId = new URL(location.href).searchParams.get('list') || '';
+    if (existing.dataset.wlPlaylist !== currentPlaylistId) {
+      resetForNavigation();
+    } else {
+      return true;
+    }
+  }
 
   if (WLPanel.findAnchor()) {
     WLPanel.inject();
