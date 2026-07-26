@@ -358,6 +358,79 @@ describe('applySort — group map persistence', () => {
 
     assert.equal(setGroupMapCalled, false, 'a failed apply must not persist a group map');
   });
+
+  it('a superseded apply does not announce success or reload when navigation happens during the persistence write', async () => {
+    // Regression test: the ownership check right after applyOrder() resolves
+    // does NOT cover the later `await WLStorage.setGroupMap(...)` — that is a
+    // second await, and resetForNavigation()'s synchronous _runId bump can land
+    // inside it just as easily as inside applyOrder(). Without a re-check after
+    // the persistence await, a navigate-away here would still announce "Sort
+    // complete" and reload the page out from under the session the user left.
+    let resolveSetGroupMap;
+    let signalReachedSetGroupMap;
+    const deferred = new Promise((resolve) => { resolveSetGroupMap = resolve; });
+    const reached = new Promise((resolve) => { signalReachedSetGroupMap = resolve; });
+
+    let reloaded = false;
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      applyOrder: async () => ({ applied: true, waitedMs: 1200 }),
+      reload: () => { reloaded = true; },
+      runTimers: true,
+      sortOrder: [{ id: 'a', setVideoId: 'A', cluster: 'Music' }],
+      playlistId: 'WL',
+      setGroupMap: async () => {
+        signalReachedSetGroupMap();
+        await deferred;
+      },
+    });
+
+    const apply = WLPanel.applySort(); // parks inside setGroupMap
+    await reached;
+
+    // Simulate navigating away mid-persist, exactly what resetForNavigation()
+    // does to the run token.
+    WLPanel._runId++;
+
+    resolveSetGroupMap(); // let the stale apply's persistence write resolve
+    await apply;
+
+    assert.equal(reloaded, false, 'a superseded apply must not reload after navigating away mid-persist');
+    assert.ok(
+      !modalCalls.showBusy.some(text => text.startsWith('Sort complete')),
+      'a superseded apply must not announce success after navigating away mid-persist'
+    );
+  });
+
+  it('still reloads when persisting the group map fails', async () => {
+    // A storage failure must not turn into a stuck modal: applySort() is
+    // invoked fire-and-forget from the modal's onApply, so an uncaught
+    // rejection here would be an unhandled rejection with no visible error and
+    // no reload. The sort itself already succeeded — headings are a
+    // convenience on top of it.
+    const originalWarn = console.warn;
+    console.warn = () => {}; // expected warning; silence it for this assertion
+    let reloaded = false;
+    try {
+      const { WLPanel, modalCalls } = loadPanelWithStubs({
+        applyOrder: async () => ({ applied: true, waitedMs: 1200 }),
+        reload: () => { reloaded = true; },
+        runTimers: true,
+        sortOrder: [{ id: 'a', setVideoId: 'A', cluster: 'Music' }],
+        playlistId: 'WL',
+        setGroupMap: async () => { throw new Error('storage quota exceeded'); },
+      });
+
+      await assert.doesNotReject(() => WLPanel.applySort());
+
+      assert.equal(reloaded, true, 'a persistence failure must not block the reload');
+      assert.ok(
+        modalCalls.showBusy.some(text => text.startsWith('Sort complete')),
+        'success should still be announced even when headings fail to persist'
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
 });
 
 describe('restoreHeadings', () => {
@@ -422,6 +495,62 @@ describe('restoreHeadings', () => {
     // identity even when every field matches (see tests/headings.test.js).
     assert.deepEqual({ ...persistedMap }, {}, 'a hash mismatch must clear the stored group map');
     assert.equal(watchCalled, false, 'stale groupings must not be injected');
+  });
+
+  it('does not throw when the stored group map cannot be read', async () => {
+    // restoreHeadings() is called unawaited from syncTrigger(), so a rejected
+    // await here would be an unhandled rejection rather than a visible error.
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const WLPanel = loadPanel({
+        WLStorage: {
+          getGroupMap: async () => { throw new Error('storage broken'); },
+          setGroupMap: async () => {},
+        },
+        WLPlaylist: { read: async () => { throw new Error('must not be called'); } },
+        WLHeadings: {
+          boundariesFrom: () => [],
+          hashIds: () => 'x',
+          watch: () => { throw new Error('must not be called'); },
+          stop() {},
+          clear() {},
+        },
+      });
+
+      await assert.doesNotReject(() => WLPanel.restoreHeadings());
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('does not throw when clearing a stale group map fails', async () => {
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const WLPanel = loadPanel({
+        WLStorage: {
+          getGroupMap: async () => ({
+            playlistId: 'WL',
+            boundaries: [{ videoId: 'a', name: 'Music', count: 1 }],
+            videoIdsHash: 'stale-hash',
+          }),
+          setGroupMap: async () => { throw new Error('storage broken'); },
+        },
+        WLPlaylist: { read: async () => [{ id: 'b' }] },
+        WLHeadings: {
+          boundariesFrom: () => [],
+          hashIds: () => 'fresh-hash',
+          watch: () => { throw new Error('must not be called'); },
+          stop() {},
+          clear() {},
+        },
+      });
+
+      await assert.doesNotReject(() => WLPanel.restoreHeadings());
+    } finally {
+      console.warn = originalWarn;
+    }
   });
 });
 

@@ -111,11 +111,24 @@ const WLPanel = {
     if (result.applied) {
       // Persist BEFORE the reload — the reload is what makes headings necessary,
       // and it destroys any in-memory state that isn't written first.
-      await WLStorage.setGroupMap({
-        playlistId,
-        boundaries: WLHeadings.boundariesFrom(this.currentSortOrder),
-        videoIdsHash: WLHeadings.hashIds(this.currentSortOrder),
-      });
+      // Headings are a convenience; the reorder above is the actual work and it
+      // already succeeded — so a storage failure here must not block the reload
+      // or leave the modal stuck. It gets its own try/catch rather than joining
+      // the applyOrder one, and failure is logged but otherwise swallowed.
+      try {
+        await WLStorage.setGroupMap({
+          playlistId,
+          boundaries: WLHeadings.boundariesFrom(this.currentSortOrder),
+          videoIdsHash: WLHeadings.hashIds(this.currentSortOrder),
+        });
+      } catch (err) {
+        console.warn('WLPanel: failed to persist group map; headings will not restore after reload', err);
+      }
+      // Re-check ownership: the await above is a window resetForNavigation()'s
+      // synchronous _runId bump can land in, same as every other await in this
+      // method. Without this, a navigate-away mid-persist would still announce
+      // "Sort complete" and reload the page the user already left.
+      if (runId !== this._runId) return;
 
       WLModal.showBusy(`Sort complete in ${(result.waitedMs / 1000).toFixed(1)}s. Refreshing...`);
       // YouTube's DOM does not reflect the reordered playlist, so a successful
@@ -134,14 +147,29 @@ const WLPanel = {
    *
    * Called from syncTrigger(), which fires on every DOM mutation batch, so it
    * must do its work at most once per playlist — hence the guard. Without it
-   * this would issue an InnerTube read per mutation.
+   * this would issue an InnerTube read per mutation. Note the guard is set
+   * (above) before any of the awaits below: if a read or storage call fails,
+   * it stays set for this playlistId, so restoration does not retry until the
+   * next navigation resets it in resetForNavigation(). That is intentional —
+   * retrying on every mutation batch is exactly what the guard exists to
+   * prevent — but it does mean a transient failure costs the rest of this
+   * page load's headings, not just one attempt.
+   *
+   * syncTrigger() calls this unawaited (fire-and-forget), so every await here
+   * must not throw — an unhandled rejection is the only other outcome.
    */
   async restoreHeadings() {
     const playlistId = new URL(location.href).searchParams.get('list');
     if (!playlistId || this._headingsRestoredFor === playlistId) return;
     this._headingsRestoredFor = playlistId;
 
-    const stored = await WLStorage.getGroupMap();
+    let stored;
+    try {
+      stored = await WLStorage.getGroupMap();
+    } catch (err) {
+      console.warn('WLPanel: failed to read stored group map', err);
+      return;
+    }
     if (!stored.boundaries || stored.playlistId !== playlistId) return;
 
     let videos;
@@ -152,7 +180,11 @@ const WLPanel = {
     }
 
     if (WLHeadings.hashIds(videos) !== stored.videoIdsHash) {
-      await WLStorage.setGroupMap({});
+      try {
+        await WLStorage.setGroupMap({});
+      } catch (err) {
+        console.warn('WLPanel: failed to clear stale group map', err);
+      }
       return;
     }
     WLHeadings.watch(stored.boundaries);
