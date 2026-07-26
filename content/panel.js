@@ -4,7 +4,6 @@
 const WLPanel = {
   panel: null,
   currentSortOrder: [],
-  lastVideoHash: null,
   _analyseCancelled: false,
 
   inject() {
@@ -18,7 +17,7 @@ const WLPanel = {
     panel.innerHTML = `
       <!-- Idle state -->
       <div id="wl-state-idle">
-        <div class="wl-btn-row wl-idle-actions">
+        <div class="wl-idle-actions">
           <button class="wl-yt-btn wl-btn-filled" id="wl-analyze-btn"><svg class="wl-btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>Analyze &amp; sort</button>
           <button class="wl-yt-btn" id="wl-duration-btn">Sort by duration</button>
         </div>
@@ -83,13 +82,6 @@ const WLPanel = {
     }
   },
 
-  /**
-   * Hash video IDs to detect list changes.
-   */
-  hashVideoIds(videos) {
-    return videos.map(v => v.id).sort().join(',');
-  },
-
   bindEvents() {
     // Analyze / sort mode selection
     this.$('#wl-analyze-btn').addEventListener('click', () => this.runSort('ai'));
@@ -102,41 +94,46 @@ const WLPanel = {
     });
 
     // Apply sort
-    this.$('#wl-apply-btn').addEventListener('click', async () => {
-      this.showState('sorting');
-
-      const playlistId = new URL(location.href).searchParams.get('list');
-      const orderedSetVideoIds = this.currentSortOrder.map(v => v.setVideoId);
-
-      this.$('#wl-sort-count').textContent = `Applying ${orderedSetVideoIds.length} moves...`;
-      this.$('#wl-sort-progress').style.width = '50%';
-
-      let result;
-      try {
-        result = await WLPlaylist.applyOrder(playlistId, orderedSetVideoIds);
-      } catch (err) {
-        this.showError(err.message);
-        return;
-      }
-
-      this.$('#wl-sort-progress').style.width = '100%';
-
-      if (result.applied) {
-        this.showIdleWithMessage(`Sort complete in ${(result.waitedMs / 1000).toFixed(1)}s.`);
-      } else {
-        this.showError('Sort was sent but the new order did not appear. Reload and check the playlist.');
-      }
-    });
+    this.$('#wl-apply-btn').addEventListener('click', () => this.applySort());
 
     // Cancel preview
     this.$('#wl-cancel-btn').addEventListener('click', () => {
       this.currentSortOrder = [];
-      this.lastVideoHash = null;
       this.showState('idle');
     });
 
     // Retry
     this.$('#wl-retry-btn').addEventListener('click', () => this.showState('idle'));
+  },
+
+  async applySort() {
+    this.showState('sorting');
+
+    const playlistId = new URL(location.href).searchParams.get('list');
+    const orderedSetVideoIds = this.currentSortOrder.map(v => v.setVideoId);
+
+    this.$('#wl-sort-count').textContent = `Applying ${orderedSetVideoIds.length} moves...`;
+    this.$('#wl-sort-progress').style.width = '50%';
+
+    let result;
+    try {
+      result = await WLPlaylist.applyOrder(playlistId, orderedSetVideoIds);
+    } catch (err) {
+      this.showError(err.message);
+      return;
+    }
+
+    this.$('#wl-sort-progress').style.width = '100%';
+
+    if (result.applied) {
+      this.showIdleWithMessage(`Sort complete in ${(result.waitedMs / 1000).toFixed(1)}s. Refreshing...`);
+      // YouTube's DOM does not reflect the reordered playlist, so a successful
+      // sort otherwise looks like nothing happened. Pause briefly so the
+      // confirmation is readable, then reload.
+      setTimeout(() => location.reload(), 1200);
+    } else {
+      this.showError('Sort was sent but the new order did not appear. Reload and check the playlist.');
+    }
   },
 
   /**
@@ -183,7 +180,6 @@ const WLPanel = {
         return;
       }
 
-      this.lastVideoHash = this.hashVideoIds(videos);
       this.renderPreview(result.sortOrder);
       this.showState('preview');
     } catch (err) {
@@ -321,7 +317,6 @@ function resetForNavigation() {
   if (oldPanel) oldPanel.remove();
   WLPanel.panel = null;
   WLPanel.currentSortOrder = [];
-  WLPanel.lastVideoHash = null;
   WLInnerTube.resetConfig();
 }
 

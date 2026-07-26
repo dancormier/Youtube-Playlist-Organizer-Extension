@@ -210,16 +210,30 @@ describe('findAnchor', () => {
 
 /**
  * Loads WLPanel wired with a stub panel (so `$`/showState work) plus stubs for
- * chrome.runtime.sendMessage, WLPlaylist.read, and WLEnrich.enrich — everything
- * runSort() touches besides the DOM.
+ * chrome.runtime.sendMessage, WLPlaylist.read/applyOrder, and WLEnrich.enrich —
+ * everything runSort()/applySort() touch besides the DOM.
+ *
+ * `reload` stubs `location.reload` (needed by applySort's post-sort reload).
+ * `runTimers`, when set, makes the sandboxed `setTimeout` invoke its callback
+ * synchronously instead of scheduling a real 1.2s wait.
+ * `sortOrder`, when set, seeds `WLPanel.currentSortOrder` so applySort() can be
+ * called directly without going through runSort()/renderPreview() first.
  */
-function loadPanelWithStubs({ sendMessage, enrich, videos }) {
-  const WLPanel = loadPanel({
+function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, reload, runTimers, sortOrder }) {
+  const sandbox = {
     chrome: { runtime: { sendMessage } },
-    WLPlaylist: { read: async () => videos },
+    WLPlaylist: { read: async () => videos, applyOrder },
     WLEnrich: { enrich },
-  });
+  };
+  if (reload) {
+    sandbox.location = { ...locationStub, reload };
+  }
+  if (runTimers) {
+    sandbox.setTimeout = (fn) => { fn(); return 0; };
+  }
+  const WLPanel = loadPanel(sandbox);
   WLPanel.panel = makePanelStub();
+  if (sortOrder) WLPanel.currentSortOrder = sortOrder;
   return WLPanel;
 }
 
@@ -343,5 +357,33 @@ describe('checkAndInject — stale panel self-heal (navigation event-ordering)',
     assert.deepEqual(removeCalls, ['A'], 'the panel tagged for playlist A should be removed exactly once');
     assert.equal(resetConfigCalls.length, 1, 'WLInnerTube.resetConfig() must run so a stale session id cannot survive the navigation');
     assert.equal(panelEl.dataset.wlPlaylist, 'B', 're-injection should tag the new panel for the current playlist');
+  });
+});
+
+describe('post-sort reload', () => {
+  it('reloads after a confirmed sort', async () => {
+    let reloaded = false;
+    const panel = loadPanelWithStubs({
+      applyOrder: async () => ({ applied: true, waitedMs: 1200 }),
+      reload: () => { reloaded = true; },
+      runTimers: true,
+      sortOrder: [{ id: 'a', setVideoId: 'A' }],
+    });
+
+    await panel.applySort();
+    assert.equal(reloaded, true);
+  });
+
+  it('does NOT reload when the order never converged', async () => {
+    let reloaded = false;
+    const panel = loadPanelWithStubs({
+      applyOrder: async () => ({ applied: false, waitedMs: 10000 }),
+      reload: () => { reloaded = true; },
+      runTimers: true,
+      sortOrder: [{ id: 'a', setVideoId: 'A' }],
+    });
+
+    await panel.applySort();
+    assert.equal(reloaded, false, 'a failed sort must leave the error on screen');
   });
 });
