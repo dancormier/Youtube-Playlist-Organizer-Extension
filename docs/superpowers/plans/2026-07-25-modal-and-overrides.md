@@ -900,3 +900,5 @@ git commit -m "feat: replace inline preview with modal and unwatched overrides"
 - Tab stays inside the modal; Escape closes it and restores focus
 - Toggling "Unwatched" reorders with no Claude request
 - Overrides survive a page reload
+
+> **SUPERSEDED** by `2026-07-26-floating-trigger-and-modal.md`. This plan assumed the trigger stayed injected into YouTube header markup; manual testing showed that injection is unreliable, so the trigger became a floating element the extension owns.
