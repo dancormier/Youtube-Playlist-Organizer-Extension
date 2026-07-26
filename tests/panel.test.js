@@ -208,6 +208,55 @@ describe('findAnchor', () => {
   });
 });
 
+/**
+ * Loads WLPanel wired with a stub panel (so `$`/showState work) plus stubs for
+ * chrome.runtime.sendMessage, WLPlaylist.read, and WLEnrich.enrich — everything
+ * runSort() touches besides the DOM.
+ */
+function loadPanelWithStubs({ sendMessage, enrich, videos }) {
+  const WLPanel = loadPanel({
+    chrome: { runtime: { sendMessage } },
+    WLPlaylist: { read: async () => videos },
+    WLEnrich: { enrich },
+  });
+  WLPanel.panel = makePanelStub();
+  return WLPanel;
+}
+
+describe('runSort mode selection', () => {
+  it('sends SORT_BY_DURATION and never enriches in duration mode', async () => {
+    const sent = [];
+    let enriched = false;
+    const panel = loadPanelWithStubs({
+      sendMessage: async (msg) => { sent.push(msg); return { success: true, sortOrder: [] }; },
+      enrich: async () => { enriched = true; },
+      videos: [{ id: 'a', setVideoId: 'A', duration: 60, percentWatched: 0 }],
+    });
+
+    await panel.runSort('duration');
+
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].type, 'SORT_BY_DURATION');
+    assert.equal(enriched, false, 'duration mode must not pay for enrichment');
+  });
+
+  it('enriches and sends ANALYZE with a playlistId in ai mode', async () => {
+    const sent = [];
+    let enriched = false;
+    const panel = loadPanelWithStubs({
+      sendMessage: async (msg) => { sent.push(msg); return { success: true, sortOrder: [] }; },
+      enrich: async () => { enriched = true; },
+      videos: [{ id: 'a', setVideoId: 'A', duration: 60, percentWatched: 0 }],
+    });
+
+    await panel.runSort('ai');
+
+    assert.equal(enriched, true);
+    assert.equal(sent[0].type, 'ANALYZE');
+    assert.ok(sent[0].playlistId, 'ANALYZE must carry the playlistId');
+  });
+});
+
 describe('checkAndInject — stale panel self-heal (navigation event-ordering)', () => {
   // yt-navigate-finish can fire before location.href actually updates. When that
   // happens, both the MutationObserver branch and the yt-navigate-finish handler skip

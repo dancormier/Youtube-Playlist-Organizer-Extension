@@ -48,9 +48,15 @@
   background: #d9d9d9;
 }
 
-/* Full-width button in idle state */
-#wl-state-idle .wl-yt-btn {
-  width: 100%;
+/* Idle actions — two modes, side by side, sharing the width */
+.wl-idle-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 0;
+}
+.wl-idle-actions .wl-yt-btn {
+  flex: 1;
+  min-width: 0;
 }
 
 .wl-btn-row {

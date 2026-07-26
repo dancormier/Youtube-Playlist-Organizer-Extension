@@ -16,9 +16,12 @@ const WLPanel = {
     const panel = document.createElement('div');
     panel.id = 'wl-organizer-panel';
     panel.innerHTML = `
-      <!-- Idle state: just a button -->
+      <!-- Idle state -->
       <div id="wl-state-idle">
-        <button class="wl-yt-btn" id="wl-analyze-btn"><svg class="wl-btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>Analyze & sort</button>
+        <div class="wl-btn-row wl-idle-actions">
+          <button class="wl-yt-btn wl-btn-filled" id="wl-analyze-btn"><svg class="wl-btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>Analyze &amp; sort</button>
+          <button class="wl-yt-btn" id="wl-duration-btn">Sort by duration</button>
+        </div>
         <p id="wl-idle-message" class="wl-text-secondary wl-hidden"></p>
       </div>
 
@@ -88,62 +91,9 @@ const WLPanel = {
   },
 
   bindEvents() {
-    // Analyze
-    this.$('#wl-analyze-btn').addEventListener('click', async () => {
-      this._analyseCancelled = false;
-      this.showState('analyzing');
-      this.$('#wl-analyze-status').textContent = 'Scanning videos...';
-
-      const isWatchLater = location.search.includes('list=WL');
-
-      try {
-        const playlistId = new URL(location.href).searchParams.get('list');
-        const videos = await WLPlaylist.read(playlistId);
-        if (this._analyseCancelled) return;
-
-        this.$('#wl-analyze-status').textContent = 'Fetching video details...';
-        await WLEnrich.enrich(videos);
-        if (this._analyseCancelled) return;
-
-        if (!videos || videos.length === 0) {
-          this.showError('No videos found on this playlist.');
-          return;
-        }
-
-        // Check if list has changed since last analysis
-        const hash = this.hashVideoIds(videos);
-        if (hash === this.lastVideoHash && this.currentSortOrder.length > 0) {
-          this.$('#wl-analyze-status').textContent = 'List unchanged — using cached results.';
-          await new Promise(r => setTimeout(r, 800));
-          if (this._analyseCancelled) return;
-          this.renderPreview(this.currentSortOrder);
-          this.showState('preview');
-          return;
-        }
-
-        let result;
-        if (isWatchLater) {
-          this.$('#wl-analyze-status').textContent = 'Categorizing with AI...';
-          const playlistIdForAnalyze = new URL(location.href).searchParams.get('list');
-          result = await chrome.runtime.sendMessage({ type: 'ANALYZE', videos, playlistId: playlistIdForAnalyze });
-        } else {
-          this.$('#wl-analyze-status').textContent = 'Sorting by duration...';
-          result = await chrome.runtime.sendMessage({ type: 'SORT_BY_DURATION', videos });
-        }
-        if (this._analyseCancelled) return;
-
-        if (!result.success) {
-          this.showError(result.error);
-          return;
-        }
-
-        this.lastVideoHash = hash;
-        this.renderPreview(result.sortOrder);
-        this.showState('preview');
-      } catch (err) {
-        if (!this._analyseCancelled) this.showError(err.message);
-      }
-    });
+    // Analyze / sort mode selection
+    this.$('#wl-analyze-btn').addEventListener('click', () => this.runSort('ai'));
+    this.$('#wl-duration-btn').addEventListener('click', () => this.runSort('duration'));
 
     // Cancel analyze
     this.$('#wl-analyze-cancel-btn').addEventListener('click', () => {
@@ -187,6 +137,58 @@ const WLPanel = {
 
     // Retry
     this.$('#wl-retry-btn').addEventListener('click', () => this.showState('idle'));
+  },
+
+  /**
+   * @param {'ai'|'duration'} mode
+   * 'duration' sorts locally and never calls Claude — no API key needed, and it
+   * skips enrichment entirely since nothing consumes the metadata.
+   */
+  async runSort(mode) {
+    this._analyseCancelled = false;
+    this.showState('analyzing');
+    this.$('#wl-analyze-status').textContent = 'Scanning videos...';
+
+    try {
+      const playlistId = new URL(location.href).searchParams.get('list');
+      if (!playlistId) {
+        this.showError('No playlist found in the URL.');
+        return;
+      }
+
+      const videos = await WLPlaylist.read(playlistId);
+      if (this._analyseCancelled) return;
+
+      if (!videos || videos.length === 0) {
+        this.showError('No videos found on this playlist.');
+        return;
+      }
+
+      let result;
+      if (mode === 'ai') {
+        this.$('#wl-analyze-status').textContent = 'Fetching video details...';
+        await WLEnrich.enrich(videos);
+        if (this._analyseCancelled) return;
+
+        this.$('#wl-analyze-status').textContent = 'Categorizing with AI...';
+        result = await chrome.runtime.sendMessage({ type: 'ANALYZE', videos, playlistId });
+      } else {
+        this.$('#wl-analyze-status').textContent = 'Sorting by duration...';
+        result = await chrome.runtime.sendMessage({ type: 'SORT_BY_DURATION', videos });
+      }
+      if (this._analyseCancelled) return;
+
+      if (!result.success) {
+        this.showError(result.error);
+        return;
+      }
+
+      this.lastVideoHash = this.hashVideoIds(videos);
+      this.renderPreview(result.sortOrder);
+      this.showState('preview');
+    } catch (err) {
+      if (!this._analyseCancelled) this.showError(err.message);
+    }
   },
 
   renderPreview(sortOrder) {
