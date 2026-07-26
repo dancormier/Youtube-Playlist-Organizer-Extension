@@ -46,7 +46,17 @@ function loadPanel(sandbox = {}) {
     WLInnerTube: { resetConfig() {} },
     WLPlaylist: {},
     WLEnrich: {},
-    WLStorage: {},
+    WLStorage: {
+      getGroupMap: async () => ({}),
+      setGroupMap: async () => {},
+    },
+    WLHeadings: {
+      boundariesFrom: () => [],
+      hashIds: () => '',
+      watch() {},
+      stop() {},
+      clear() {},
+    },
     chrome: { runtime: { sendMessage: async () => ({ success: true, sortOrder: [] }) } },
     ...sandbox,
   });
@@ -62,14 +72,27 @@ function loadPanel(sandbox = {}) {
  * synchronously instead of scheduling a real 1.2s wait.
  * `sortOrder`/`playlistId`, when set, seed WLPanel state so applySort()/
  * toggleUnwatched() can be called directly without going through runSort() first.
+ * `setGroupMap`, when set, replaces the default no-op WLStorage.setGroupMap —
+ * used by the post-sort persistence tests to observe ordering/timing.
  */
-function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, toggleOverride, reload, runTimers, sortOrder, playlistId }) {
+function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, toggleOverride, reload, runTimers, sortOrder, playlistId, setGroupMap }) {
   const modalCalls = { showBusy: [], showPreview: [], showError: [], setStatus: [] };
   const sandbox = {
     chrome: { runtime: { sendMessage } },
     WLPlaylist: { read: async () => videos, applyOrder },
     WLEnrich: { enrich },
-    WLStorage: { toggleOverride },
+    WLStorage: {
+      toggleOverride,
+      setGroupMap: setGroupMap || (async () => {}),
+      getGroupMap: async () => ({}),
+    },
+    WLHeadings: {
+      boundariesFrom: (order) => order,
+      hashIds: () => 'hash',
+      watch() {},
+      stop() {},
+      clear() {},
+    },
     WLModal: {
       mountTrigger() {},
       removeTrigger() {},
@@ -287,6 +310,118 @@ describe('applySort — post-sort reload', () => {
       !modalCalls.showBusy.some(text => text.startsWith('Sort complete')),
       'a superseded apply must not announce success into a newer session'
     );
+  });
+});
+
+describe('applySort — group map persistence', () => {
+  it('persists the group map before scheduling the reload, and awaits the write', async () => {
+    const events = [];
+    let persistedMap;
+
+    const { WLPanel } = loadPanelWithStubs({
+      applyOrder: async () => ({ applied: true, waitedMs: 1200 }),
+      reload: () => { events.push('reload'); },
+      runTimers: true,
+      sortOrder: [{ id: 'a', setVideoId: 'A', cluster: 'Music' }],
+      playlistId: 'WL',
+      setGroupMap: async (map) => {
+        persistedMap = map;
+        events.push('setGroupMap-called');
+        // A real (unstubbed) delay: setTimeout here is the test file's own
+        // Node global, not the sandbox's overridden one, so this genuinely
+        // yields. If applySort scheduled the reload without awaiting this
+        // promise, 'reload' would land before 'setGroupMap-resolved'.
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        events.push('setGroupMap-resolved');
+      },
+    });
+
+    await WLPanel.applySort();
+
+    assert.deepEqual(events, ['setGroupMap-called', 'setGroupMap-resolved', 'reload']);
+    assert.equal(persistedMap.playlistId, 'WL');
+  });
+
+  it('persists nothing when the apply did not converge', async () => {
+    let setGroupMapCalled = false;
+
+    const { WLPanel } = loadPanelWithStubs({
+      applyOrder: async () => ({ applied: false, waitedMs: 10000 }),
+      reload: () => {},
+      runTimers: true,
+      sortOrder: [{ id: 'a', setVideoId: 'A', cluster: 'Music' }],
+      playlistId: 'WL',
+      setGroupMap: async () => { setGroupMapCalled = true; },
+    });
+
+    await WLPanel.applySort();
+
+    assert.equal(setGroupMapCalled, false, 'a failed apply must not persist a group map');
+  });
+});
+
+describe('restoreHeadings', () => {
+  it('performs at most one playlist read even when called repeatedly', async () => {
+    let readCalls = 0;
+    let watchCalls = 0;
+
+    const WLPanel = loadPanel({
+      WLStorage: {
+        getGroupMap: async () => ({
+          playlistId: 'WL',
+          boundaries: [{ videoId: 'a', name: 'Music', count: 1 }],
+          videoIdsHash: 'match',
+        }),
+        setGroupMap: async () => {},
+      },
+      WLPlaylist: { read: async () => { readCalls++; return [{ id: 'a' }]; } },
+      WLHeadings: {
+        boundariesFrom: () => [],
+        hashIds: () => 'match',
+        watch: () => { watchCalls++; },
+        stop() {},
+        clear() {},
+      },
+    });
+
+    await WLPanel.restoreHeadings();
+    await WLPanel.restoreHeadings();
+    await WLPanel.restoreHeadings();
+
+    assert.equal(readCalls, 1, 'restoreHeadings must guard against repeated calls for the same playlist');
+    assert.equal(watchCalls, 1, 'headings should only be (re)watched once per playlist');
+  });
+
+  it('clears the stored map and injects nothing when the video-set hash differs', async () => {
+    let persistedMap;
+    let watchCalled = false;
+
+    const WLPanel = loadPanel({
+      WLStorage: {
+        getGroupMap: async () => ({
+          playlistId: 'WL',
+          boundaries: [{ videoId: 'a', name: 'Music', count: 1 }],
+          videoIdsHash: 'stale-hash',
+        }),
+        setGroupMap: async (map) => { persistedMap = map; },
+      },
+      WLPlaylist: { read: async () => [{ id: 'b' }] },
+      WLHeadings: {
+        boundariesFrom: () => [],
+        hashIds: () => 'fresh-hash',
+        watch: () => { watchCalled = true; },
+        stop() {},
+        clear() {},
+      },
+    });
+
+    await WLPanel.restoreHeadings();
+
+    // persistedMap is a vm-sandbox-realm object; spread into a main-realm
+    // plain object before deepEqual, or the comparison fails on prototype
+    // identity even when every field matches (see tests/headings.test.js).
+    assert.deepEqual({ ...persistedMap }, {}, 'a hash mismatch must clear the stored group map');
+    assert.equal(watchCalled, false, 'stale groupings must not be injected');
   });
 });
 

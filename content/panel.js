@@ -1,5 +1,5 @@
 // content/panel.js
-// Depends on: content/selectors.js, content/innertube.js, content/playlist.js, content/enrich.js, content/modal.js, content/storage.js
+// Depends on: content/selectors.js, content/innertube.js, content/playlist.js, content/enrich.js, content/modal.js, content/storage.js, content/headings.js
 
 const WLPanel = {
   _runId: 0,
@@ -109,6 +109,14 @@ const WLPanel = {
     if (runId !== this._runId) return;
 
     if (result.applied) {
+      // Persist BEFORE the reload — the reload is what makes headings necessary,
+      // and it destroys any in-memory state that isn't written first.
+      await WLStorage.setGroupMap({
+        playlistId,
+        boundaries: WLHeadings.boundariesFrom(this.currentSortOrder),
+        videoIdsHash: WLHeadings.hashIds(this.currentSortOrder),
+      });
+
       WLModal.showBusy(`Sort complete in ${(result.waitedMs / 1000).toFixed(1)}s. Refreshing...`);
       // YouTube's DOM does not reflect the reordered playlist, so a successful
       // sort otherwise looks like nothing happened.
@@ -116,6 +124,38 @@ const WLPanel = {
     } else {
       WLModal.showError('Sort was sent but the new order did not appear. Reload and check the playlist.');
     }
+  },
+
+  _headingsRestoredFor: null,
+
+  /**
+   * Re-apply stored headings after a reload. Discards them when the playlist's
+   * contents have changed, since stale groupings are worse than none.
+   *
+   * Called from syncTrigger(), which fires on every DOM mutation batch, so it
+   * must do its work at most once per playlist — hence the guard. Without it
+   * this would issue an InnerTube read per mutation.
+   */
+  async restoreHeadings() {
+    const playlistId = new URL(location.href).searchParams.get('list');
+    if (!playlistId || this._headingsRestoredFor === playlistId) return;
+    this._headingsRestoredFor = playlistId;
+
+    const stored = await WLStorage.getGroupMap();
+    if (!stored.boundaries || stored.playlistId !== playlistId) return;
+
+    let videos;
+    try {
+      videos = await WLPlaylist.read(playlistId);
+    } catch {
+      return; // Offline or API broken — headings simply don't restore.
+    }
+
+    if (WLHeadings.hashIds(videos) !== stored.videoIdsHash) {
+      await WLStorage.setGroupMap({});
+      return;
+    }
+    WLHeadings.watch(stored.boundaries);
   },
 };
 
@@ -132,9 +172,12 @@ function onPlaylistPage() {
 function syncTrigger() {
   if (onPlaylistPage()) {
     WLModal.mountTrigger({ onOpen: () => WLPanel.openModal() });
+    WLPanel.restoreHeadings();
   } else {
     WLModal.removeTrigger();
     WLModal.close();
+    WLHeadings.stop();
+    WLHeadings.clear();
   }
 }
 
@@ -144,6 +187,9 @@ function resetForNavigation() {
   WLPanel.currentPlaylistId = null;
   WLModal.close();
   WLInnerTube.resetConfig();
+  WLHeadings.stop();
+  WLHeadings.clear();
+  WLPanel._headingsRestoredFor = null;
 }
 
 let lastUrl = location.href;
