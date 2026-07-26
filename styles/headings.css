@@ -1,0 +1,25 @@
+/* styles/headings.css — group dividers injected into the playlist */
+
+.wl-playlist-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0 8px;
+  padding: 0 0 6px;
+  border-bottom: 1px solid #3f3f3f;
+  font-family: 'Roboto', 'Arial', sans-serif;
+  font-size: 1.4rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #69b3ff;
+}
+
+.wl-playlist-heading.wl-in-progress { color: #ff8a80; }
+
+.wl-playlist-heading .wl-heading-count {
+  color: #909090;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}

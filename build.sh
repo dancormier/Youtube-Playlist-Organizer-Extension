@@ -19,10 +19,12 @@ SHARED=(
   content/enrich.js
   content/storage.js
   content/modal.js
+  content/headings.js
   content/panel.js
   styles/content.css
   styles/panel.css
   styles/modal.css
+  styles/headings.css
   popup/popup.html
   popup/popup.css
   popup/popup.js
