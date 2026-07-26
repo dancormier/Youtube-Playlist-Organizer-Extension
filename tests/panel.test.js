@@ -3,60 +3,23 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadGlobal } from './helpers/load-global.js';
 
-// content/panel.js runs side-effecting code at load time (sets up a MutationObserver,
-// reads location.href, calls checkAndInject once). We give it a pathname that doesn't
-// start with '/playlist' so checkAndInject's early return keeps that top-level code
-// from touching `document` at all — the tests below drive WLPanel's methods directly
-// instead of going through inject()/DOM discovery.
+// content/panel.js runs side-effecting code at load time: it sets up a
+// MutationObserver, a yt-navigate-finish listener, and calls syncTrigger() once.
+// syncTrigger() reads location.pathname/href and, on a playlist page, calls
+// WLModal.mountTrigger — so the sandbox must stub `document`, `location`,
+// `MutationObserver`, `window`, and `WLModal` even for tests that only want to
+// drive WLPanel's methods directly.
 
-function createStubElement() {
-  return {
-    children: [],
-    listeners: {},
-    style: {},
-    _text: '',
-    _html: '',
-    _className: '',
-    classList: {
-      add() {},
-      remove() {},
-      contains() { return false; },
-      toggle() {},
-    },
-    addEventListener(type, fn) { this.listeners[type] = fn; },
-    appendChild(child) { this.children.push(child); return child; },
-    querySelector() { return null; },
-    get textContent() { return this._text; },
-    set textContent(v) { this._text = v; },
-    get innerHTML() { return this._html; },
-    set innerHTML(v) { this._html = v; this.children = []; },
-    get className() { return this._className; },
-    set className(v) { this._className = v; },
-  };
-}
-
-/** A fake `panel` element whose querySelector(sel) hands out one stub element per selector. */
-function makePanelStub() {
-  const registry = new Map();
-  const panel = {
-    querySelector(sel) {
-      if (!registry.has(sel)) registry.set(sel, createStubElement());
-      return registry.get(sel);
-    },
-  };
-  return panel;
-}
+const locationStub = {
+  href: 'https://www.youtube.com/playlist?list=WL',
+  pathname: '/not-playlist', // keeps load-time syncTrigger() from mounting the trigger
+  search: '?list=WL',
+};
 
 const documentStub = {
   body: {},
   querySelector: () => null,
-  createElement: () => createStubElement(),
-};
-
-const locationStub = {
-  href: 'https://www.youtube.com/playlist?list=WL',
-  pathname: '/not-playlist', // keeps load-time checkAndInject() from touching `document`
-  search: '?list=WL',
+  createElement: () => ({}),
 };
 
 class MutationObserverStub {
@@ -69,162 +32,54 @@ function loadPanel(sandbox = {}) {
     document: documentStub,
     location: locationStub,
     MutationObserver: MutationObserverStub,
+    window: { addEventListener: () => {} },
+    WLModal: {
+      mountTrigger() {},
+      removeTrigger() {},
+      close() {},
+      open() {},
+      showBusy() {},
+      showPreview() {},
+      showError() {},
+      setStatus() {},
+    },
     WLInnerTube: { resetConfig() {} },
     WLPlaylist: {},
     WLEnrich: {},
+    WLStorage: {},
     chrome: { runtime: { sendMessage: async () => ({ success: true, sortOrder: [] }) } },
-    // injectWithRetry() runs at load time and reaches for these even when
-    // checkAndInject() bails out early (non-/playlist pathname) — it still
-    // schedules the retry interval. Stub them so load-time execution doesn't
-    // throw or start a real timer.
-    setInterval: () => 0,
-    clearInterval: () => {},
-    window: { addEventListener: () => {} },
     ...sandbox,
   });
 }
 
-describe('WLPanel.renderPreview — in-progress remaining time (CRITICAL 1 regression)', () => {
-  it('renders a sane remaining-time string from percentWatched, not NaN:NaN', () => {
-    const WLPanel = loadPanel();
-    const panel = makePanelStub();
-    WLPanel.panel = panel;
-
-    // 600s video, 25% watched -> 450s (7:30) remaining. The old code read the
-    // never-set `video.progress` field and produced NaN:NaN here.
-    const sortOrder = [
-      { id: 'v1', setVideoId: 'S1', title: 'Some Video', cluster: null, duration: 600, percentWatched: 25 },
-    ];
-    WLPanel.renderPreview(sortOrder);
-
-    const list = panel.querySelector('#wl-preview-list');
-    // children[0] is the "In Progress" cluster label, children[1] is the video row.
-    const item = list.children[1];
-    const meta = item.children[1];
-
-    assert.equal(meta.textContent, '7:30 left');
-    assert.doesNotMatch(meta.textContent, /NaN/);
-  });
-
-  it('never produces a negative remaining time at the top of the percentage range', () => {
-    const WLPanel = loadPanel();
-    const panel = makePanelStub();
-    WLPanel.panel = panel;
-
-    const sortOrder = [
-      { id: 'v1', setVideoId: 'S1', title: 'Almost Done', cluster: null, duration: 600, percentWatched: 95 },
-    ];
-    WLPanel.renderPreview(sortOrder);
-
-    const item = panel.querySelector('#wl-preview-list').children[1];
-    const meta = item.children[1];
-
-    // 600 * (1 - 95/100) = 30s remaining, not a huge negative number (which is what
-    // `1 - percentWatched` without the /100 division would have produced).
-    assert.equal(meta.textContent, '0:30 left');
-  });
-});
-
-describe('WLPanel analyze — cancellation during enrichment (CRITICAL 2 regression)', () => {
-  it('does not call chrome.runtime.sendMessage once cancelled mid-enrichment', async () => {
-    const sendMessageCalls = [];
-    const videos = [{ id: 'v1', setVideoId: 'S1', title: 'T', duration: 100, percentWatched: 0 }];
-
-    const WLPanel = loadPanel({
-      chrome: { runtime: { sendMessage: async (msg) => { sendMessageCalls.push(msg); return { success: true, sortOrder: [] }; } } },
-      WLPlaylist: { read: async () => videos },
-      WLEnrich: {
-        // Enrichment is the longest phase (one `player` call per video), so it's the
-        // realistic window for a user's Cancel click to land. Simulate that here by
-        // bumping the run token, exactly what the Cancel button handler does.
-        enrich: async () => { WLPanel._runId++; },
-      },
-    });
-
-    const panel = makePanelStub();
-    WLPanel.panel = panel;
-    WLPanel.bindEvents();
-
-    await panel.querySelector('#wl-analyze-btn').listeners['click']();
-
-    assert.equal(sendMessageCalls.length, 0, 'a cancelled analyze must not fire the paid ANALYZE call');
-  });
-
-  it('still calls chrome.runtime.sendMessage when analysis is not cancelled', async () => {
-    const sendMessageCalls = [];
-    const videos = [{ id: 'v1', setVideoId: 'S1', title: 'T', duration: 100, percentWatched: 0 }];
-
-    const WLPanel = loadPanel({
-      chrome: { runtime: { sendMessage: async (msg) => { sendMessageCalls.push(msg); return { success: true, sortOrder: [] }; } } },
-      WLPlaylist: { read: async () => videos },
-      WLEnrich: { enrich: async () => {} },
-    });
-
-    const panel = makePanelStub();
-    WLPanel.panel = panel;
-    WLPanel.bindEvents();
-
-    await panel.querySelector('#wl-analyze-btn').listeners['click']();
-
-    assert.equal(sendMessageCalls.length, 1, 'a normal (non-cancelled) analyze should still reach ANALYZE');
-  });
-});
-
-describe('findAnchor', () => {
-  function withDom(elements) {
-    // Minimal document stub: querySelector returns the first matching key.
-    return {
-      querySelector: (sel) => elements[sel] || null,
-      querySelectorAll: () => [],
-      addEventListener: () => {},
-      body: { appendChild: () => {} },
-      documentElement: { innerHTML: '' },
-    };
-  }
-
-  it('returns the Watch Later anchor even when it has no layout yet', () => {
-    const wlAnchor = {
-      getBoundingClientRect: () => ({ width: 0, height: 0 }),
-      parentNode: {},
-    };
-    const doc = withDom({
-      '.thumbnail-and-metadata-wrapper.style-scope.ytd-playlist-header-renderer': wlAnchor,
-    });
-    const panel = loadPanel({ document: doc });
-    const anchor = panel.findAnchor();
-    assert.ok(anchor, 'a zero-size element is still a valid anchor');
-    assert.equal(anchor.position, 'after');
-  });
-
-  it('falls back to the sidebar anchor when no playlist header exists', () => {
-    const sidebar = { getBoundingClientRect: () => ({ width: 100, height: 40 }) };
-    const doc = withDom({ '.page-header-sidebar yt-flexible-actions-view-model': sidebar });
-    const panel = loadPanel({ document: doc });
-    assert.equal(panel.findAnchor().position, 'inside');
-  });
-
-  it('returns null when neither anchor is present', () => {
-    const panel = loadPanel({ document: withDom({}) });
-    assert.equal(panel.findAnchor(), null);
-  });
-});
-
 /**
- * Loads WLPanel wired with a stub panel (so `$`/showState work) plus stubs for
- * chrome.runtime.sendMessage, WLPlaylist.read/applyOrder, and WLEnrich.enrich —
- * everything runSort()/applySort() touch besides the DOM.
+ * Loads WLPanel wired with stubs for chrome.runtime.sendMessage,
+ * WLPlaylist.read/applyOrder, WLEnrich.enrich, WLStorage.toggleOverride, and a
+ * spyable WLModal — everything runSort()/applySort()/toggleUnwatched() touch.
  *
  * `reload` stubs `location.reload` (needed by applySort's post-sort reload).
  * `runTimers`, when set, makes the sandboxed `setTimeout` invoke its callback
  * synchronously instead of scheduling a real 1.2s wait.
- * `sortOrder`, when set, seeds `WLPanel.currentSortOrder` so applySort() can be
- * called directly without going through runSort()/renderPreview() first.
+ * `sortOrder`/`playlistId`, when set, seed WLPanel state so applySort()/
+ * toggleUnwatched() can be called directly without going through runSort() first.
  */
-function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, reload, runTimers, sortOrder }) {
+function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, toggleOverride, reload, runTimers, sortOrder, playlistId }) {
+  const modalCalls = { showBusy: [], showPreview: [], showError: [], setStatus: [] };
   const sandbox = {
     chrome: { runtime: { sendMessage } },
     WLPlaylist: { read: async () => videos, applyOrder },
     WLEnrich: { enrich },
+    WLStorage: { toggleOverride },
+    WLModal: {
+      mountTrigger() {},
+      removeTrigger() {},
+      close() {},
+      open() {},
+      showBusy(text) { modalCalls.showBusy.push(text); },
+      showPreview(order) { modalCalls.showPreview.push(order); },
+      showError(msg) { modalCalls.showError.push(msg); },
+      setStatus(text) { modalCalls.setStatus.push(text); },
+    },
   };
   if (reload) {
     sandbox.location = { ...locationStub, reload };
@@ -233,22 +88,22 @@ function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, reload, r
     sandbox.setTimeout = (fn) => { fn(); return 0; };
   }
   const WLPanel = loadPanel(sandbox);
-  WLPanel.panel = makePanelStub();
   if (sortOrder) WLPanel.currentSortOrder = sortOrder;
-  return WLPanel;
+  if (playlistId) WLPanel.currentPlaylistId = playlistId;
+  return { WLPanel, modalCalls, WLModal: sandbox.WLModal };
 }
 
 describe('runSort mode selection', () => {
   it('sends SORT_BY_DURATION and never enriches in duration mode', async () => {
     const sent = [];
     let enriched = false;
-    const panel = loadPanelWithStubs({
+    const { WLPanel } = loadPanelWithStubs({
       sendMessage: async (msg) => { sent.push(msg); return { success: true, sortOrder: [] }; },
       enrich: async () => { enriched = true; },
       videos: [{ id: 'a', setVideoId: 'A', duration: 60, percentWatched: 0 }],
     });
 
-    await panel.runSort('duration');
+    await WLPanel.runSort('duration');
 
     assert.equal(sent.length, 1);
     assert.equal(sent[0].type, 'SORT_BY_DURATION');
@@ -258,134 +113,17 @@ describe('runSort mode selection', () => {
   it('enriches and sends ANALYZE with a playlistId in ai mode', async () => {
     const sent = [];
     let enriched = false;
-    const panel = loadPanelWithStubs({
+    const { WLPanel } = loadPanelWithStubs({
       sendMessage: async (msg) => { sent.push(msg); return { success: true, sortOrder: [] }; },
       enrich: async () => { enriched = true; },
       videos: [{ id: 'a', setVideoId: 'A', duration: 60, percentWatched: 0 }],
     });
 
-    await panel.runSort('ai');
+    await WLPanel.runSort('ai');
 
     assert.equal(enriched, true);
     assert.equal(sent[0].type, 'ANALYZE');
     assert.ok(sent[0].playlistId, 'ANALYZE must carry the playlistId');
-  });
-});
-
-describe('checkAndInject — stale panel self-heal (navigation event-ordering)', () => {
-  // yt-navigate-finish can fire before location.href actually updates. When that
-  // happens, both the MutationObserver branch and the yt-navigate-finish handler skip
-  // resetForNavigation() because `location.href !== lastUrl` is still false at the
-  // moment they run. Without a second line of defense, checkAndInject() would then see
-  // the old #wl-organizer-panel, short-circuit, and leave the panel bound to the
-  // previous playlist — with WLInnerTube.resetConfig() never called, so a stale
-  // DELEGATED_SESSION_ID could survive an account switch. This test drives the real
-  // entry point (checkAndInject) rather than lastUrl bookkeeping, to prove the healing
-  // is self-contained and doesn't depend on event ordering.
-  it('removes a panel tagged for a different playlist and resets InnerTube config', () => {
-    let panelEl = null;
-    const removeCalls = [];
-    const resetConfigCalls = [];
-
-    const anchorEl = {
-      getBoundingClientRect: () => ({ width: 0, height: 0 }),
-      parentNode: { insertBefore: () => {} },
-    };
-
-    // A mutable location stub: real navigation mutates `location.href` in place,
-    // which is exactly the case that skips lastUrl-based resets when event ordering
-    // is unlucky.
-    const loc = {
-      href: 'https://www.youtube.com/playlist?list=A',
-      pathname: '/playlist',
-      search: '?list=A',
-    };
-
-    const doc = {
-      querySelector: (sel) => {
-        if (sel === '#wl-organizer-panel') return panelEl;
-        if (sel === '.thumbnail-and-metadata-wrapper.style-scope.ytd-playlist-header-renderer') return anchorEl;
-        return null;
-      },
-      querySelectorAll: () => [],
-      addEventListener: () => {},
-      body: { appendChild: () => {} },
-      documentElement: { innerHTML: '' },
-      createElement: () => {
-        const registry = new Map();
-        const el = {
-          id: '',
-          innerHTML: '',
-          dataset: {},
-          remove: () => { removeCalls.push(el.dataset.wlPlaylist); panelEl = null; },
-          querySelector(sel) {
-            if (!registry.has(sel)) registry.set(sel, { addEventListener: () => {} });
-            return registry.get(sel);
-          },
-        };
-        panelEl = el;
-        return el;
-      },
-    };
-
-    // Loading with pathname '/playlist' means injectWithRetry() actually injects at
-    // load time (through the real inject() path), tagging the panel for playlist A —
-    // this exercises the tagging added to inject(), not just a hand-built fixture.
-    const checkAndInject = loadGlobal('content/panel.js', 'checkAndInject', {
-      document: doc,
-      location: loc,
-      MutationObserver: MutationObserverStub,
-      WLInnerTube: { resetConfig: () => resetConfigCalls.push(true) },
-      WLPlaylist: {},
-      WLEnrich: {},
-      chrome: { runtime: { sendMessage: async () => ({ success: true, sortOrder: [] }) } },
-      setInterval: () => 0,
-      clearInterval: () => {},
-      window: { addEventListener: () => {} },
-    });
-
-    assert.ok(panelEl, 'panel should have been injected for playlist A at load time');
-    assert.equal(panelEl.dataset.wlPlaylist, 'A');
-    assert.equal(resetConfigCalls.length, 0, 'a fresh injection is not a navigation reset');
-
-    // Simulate the URL moving to playlist B without any reset having run yet.
-    loc.href = 'https://www.youtube.com/playlist?list=B';
-    loc.search = '?list=B';
-
-    const result = checkAndInject();
-
-    assert.equal(result, true);
-    assert.deepEqual(removeCalls, ['A'], 'the panel tagged for playlist A should be removed exactly once');
-    assert.equal(resetConfigCalls.length, 1, 'WLInnerTube.resetConfig() must run so a stale session id cannot survive the navigation');
-    assert.equal(panelEl.dataset.wlPlaylist, 'B', 're-injection should tag the new panel for the current playlist');
-  });
-});
-
-describe('post-sort reload', () => {
-  it('reloads after a confirmed sort', async () => {
-    let reloaded = false;
-    const panel = loadPanelWithStubs({
-      applyOrder: async () => ({ applied: true, waitedMs: 1200 }),
-      reload: () => { reloaded = true; },
-      runTimers: true,
-      sortOrder: [{ id: 'a', setVideoId: 'A' }],
-    });
-
-    await panel.applySort();
-    assert.equal(reloaded, true);
-  });
-
-  it('does NOT reload when the order never converged', async () => {
-    let reloaded = false;
-    const panel = loadPanelWithStubs({
-      applyOrder: async () => ({ applied: false, waitedMs: 10000 }),
-      reload: () => { reloaded = true; },
-      runTimers: true,
-      sortOrder: [{ id: 'a', setVideoId: 'A' }],
-    });
-
-    await panel.applySort();
-    assert.equal(reloaded, false, 'a failed sort must leave the error on screen');
   });
 });
 
@@ -396,16 +134,13 @@ describe('runSort — stale run supersession (run token)', () => {
   // start, finish, and render before A is allowed to resume — proving A's late
   // arrival is a no-op rather than a race that sometimes passes.
 
-  it('a superseded run does not call renderPreview — the newer run\'s order wins', async () => {
+  it('a superseded run does not call WLModal.showPreview — the newer run\'s order wins', async () => {
     let resolveA;
     let signalReachedA;
     const deferredA = new Promise((resolve) => { resolveA = resolve; });
-    // Resolves the instant run A's ANALYZE call is in flight and awaiting deferredA,
-    // so the test can deterministically wait for that exact checkpoint instead of
-    // guessing how many microtask ticks read()/enrich() take to settle.
     const reachedA = new Promise((resolve) => { signalReachedA = resolve; });
 
-    const panel = loadPanelWithStubs({
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
       sendMessage: async (msg) => {
         if (msg.type === 'ANALYZE') {
           // Run A (ai mode) blocks here until the test lets it through.
@@ -420,34 +155,33 @@ describe('runSort — stale run supersession (run token)', () => {
       videos: [{ id: 'x', setVideoId: 'X', duration: 60, percentWatched: 0 }],
     });
 
-    const runA = panel.runSort('ai'); // starts; will park inside the ANALYZE sendMessage call
+    const runA = WLPanel.runSort('ai'); // starts; will park inside the ANALYZE sendMessage call
     await reachedA; // wait until A is actually parked, not just "started"
-    await panel.runSort('duration'); // supersedes A (bumps _runId) and completes fully
+    await WLPanel.runSort('duration'); // supersedes A (bumps _runId) and completes fully
 
     assert.deepEqual(
-      panel.currentSortOrder.map(v => v.setVideoId),
-      ['B'],
-      'run B should have rendered its own order'
+      modalCalls.showPreview.map(order => order.map(v => v.setVideoId)),
+      [['B']],
+      'only run B\'s order should have been shown'
     );
 
     resolveA(); // let A resume — its runId no longer matches WLPanel._runId
     await runA;
 
     assert.deepEqual(
-      panel.currentSortOrder.map(v => v.setVideoId),
-      ['B'],
-      'a superseded run must not overwrite a newer run\'s rendered order'
+      modalCalls.showPreview.map(order => order.map(v => v.setVideoId)),
+      [['B']],
+      'a superseded run must not call showPreview once it resolves'
     );
   });
 
-  it('a superseded run does not call showError when it fails after being superseded', async () => {
+  it('a superseded run does not call WLModal.showError when it fails after being superseded', async () => {
     let rejectA;
     let signalReachedA;
     const deferredA = new Promise((_resolve, reject) => { rejectA = reject; });
     const reachedA = new Promise((resolve) => { signalReachedA = resolve; });
-    const errorCalls = [];
 
-    const panel = loadPanelWithStubs({
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
       sendMessage: async (msg) => {
         if (msg.type === 'ANALYZE') {
           signalReachedA();
@@ -458,19 +192,98 @@ describe('runSort — stale run supersession (run token)', () => {
       enrich: async () => {},
       videos: [{ id: 'x', setVideoId: 'X', duration: 60, percentWatched: 0 }],
     });
-    panel.showError = (msg) => { errorCalls.push(msg); };
 
-    const runA = panel.runSort('ai'); // starts; will park inside the ANALYZE sendMessage call
+    const runA = WLPanel.runSort('ai'); // starts; will park inside the ANALYZE sendMessage call
     await reachedA; // wait until A is actually parked, not just "started"
-    await panel.runSort('duration'); // supersedes A (bumps _runId) and completes fully
+    await WLPanel.runSort('duration'); // supersedes A (bumps _runId) and completes fully
 
     rejectA(new Error('boom')); // A's sendMessage now throws, caught by runSort's catch block
     await runA;
 
     assert.equal(
-      errorCalls.length,
+      modalCalls.showError.length,
       0,
       'a superseded run must not paint an error over a newer run\'s preview'
     );
+  });
+});
+
+describe('applySort — post-sort reload', () => {
+  it('reloads after a confirmed sort', async () => {
+    let reloaded = false;
+    const { WLPanel } = loadPanelWithStubs({
+      applyOrder: async () => ({ applied: true, waitedMs: 1200 }),
+      reload: () => { reloaded = true; },
+      runTimers: true,
+      sortOrder: [{ id: 'a', setVideoId: 'A' }],
+      playlistId: 'WL',
+    });
+
+    await WLPanel.applySort();
+    assert.equal(reloaded, true);
+  });
+
+  it('does NOT reload when the order never converged', async () => {
+    let reloaded = false;
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      applyOrder: async () => ({ applied: false, waitedMs: 10000 }),
+      reload: () => { reloaded = true; },
+      runTimers: true,
+      sortOrder: [{ id: 'a', setVideoId: 'A' }],
+      playlistId: 'WL',
+    });
+
+    await WLPanel.applySort();
+    assert.equal(reloaded, false, 'a failed sort must leave the error on screen');
+    assert.equal(modalCalls.showError.length, 1);
+  });
+
+  it('does NOT reload when applyOrder throws', async () => {
+    let reloaded = false;
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      applyOrder: async () => { throw new Error('network blew up'); },
+      reload: () => { reloaded = true; },
+      runTimers: true,
+      sortOrder: [{ id: 'a', setVideoId: 'A' }],
+      playlistId: 'WL',
+    });
+
+    await WLPanel.applySort();
+    assert.equal(reloaded, false, 'a thrown apply error must leave the error on screen');
+    assert.deepEqual(modalCalls.showError, ['network blew up']);
+  });
+});
+
+describe('toggleUnwatched', () => {
+  it('sends RESORT with the current playlistId and never triggers a Claude call', async () => {
+    const sent = [];
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async (msg) => { sent.push(msg); return { success: true, sortOrder: [{ id: 'b', setVideoId: 'B', cluster: null, duration: 10, percentWatched: 0 }] }; },
+      toggleOverride: async () => ['v1'],
+      playlistId: 'PL123',
+    });
+
+    await WLPanel.toggleUnwatched('v1');
+
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].type, 'RESORT');
+    assert.equal(sent[0].playlistId, 'PL123');
+    assert.deepEqual(sent[0].overrides, ['v1']);
+    assert.deepEqual(
+      modalCalls.showPreview[0].map(v => v.setVideoId),
+      ['B']
+    );
+  });
+
+  it('surfaces an error via WLModal.showError when RESORT fails', async () => {
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async () => ({ success: false, error: 'stale clusters' }),
+      toggleOverride: async () => ['v1'],
+      playlistId: 'PL123',
+    });
+
+    await WLPanel.toggleUnwatched('v1');
+
+    assert.deepEqual(modalCalls.showError, ['stale clusters']);
   });
 });
