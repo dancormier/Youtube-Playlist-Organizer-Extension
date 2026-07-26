@@ -45,10 +45,45 @@ describe('WLStorage.toggleOverride', () => {
     assert.deepEqual([...store.unwatchedOverrides], ['a']);
   });
 
-  it('does not duplicate on repeated adds', async () => {
+  it('removes a video on toggle-off', async () => {
     const { api } = load({ unwatchedOverrides: ['a'] });
     await api.toggleOverride('b');
     assert.deepEqual([...(await api.toggleOverride('b'))], ['a']);
+  });
+
+  it('serializes concurrent toggles to prevent race conditions', async () => {
+    const store = { unwatchedOverrides: [] };
+    const chrome = {
+      storage: {
+        local: {
+          async get(key) {
+            // Yield control to allow interleaving
+            await new Promise(r => setTimeout(r, 0));
+            return key in store ? { [key]: store[key] } : {};
+          },
+          async set(values) {
+            // Yield control to allow interleaving
+            await new Promise(r => setTimeout(r, 0));
+            Object.assign(store, values);
+          },
+        },
+      },
+    };
+    const api = loadGlobal('content/storage.js', 'WLStorage', { chrome });
+
+    // Fire two toggles without awaiting the first.
+    // Without serialization, both would read [], compute independently, and the second
+    // write would overwrite the first, losing one toggle.
+    // With serialization, the second toggle waits for the first to complete and write,
+    // then reads the updated state.
+    const p1 = api.toggleOverride('a');
+    const p2 = api.toggleOverride('b');
+
+    await p1;
+    await p2;
+
+    // Both toggles should be present in the final store
+    assert.deepEqual([...store.unwatchedOverrides].sort(), ['a', 'b']);
   });
 });
 
