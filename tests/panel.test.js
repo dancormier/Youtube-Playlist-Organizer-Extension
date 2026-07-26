@@ -252,6 +252,42 @@ describe('applySort — post-sort reload', () => {
     assert.equal(reloaded, false, 'a thrown apply error must leave the error on screen');
     assert.deepEqual(modalCalls.showError, ['network blew up']);
   });
+
+  it('a superseded apply does not reload and does not announce success', async () => {
+    let resolveApply;
+    let signalReachedApply;
+    const deferredApply = new Promise((resolve) => { resolveApply = resolve; });
+    const reachedApply = new Promise((resolve) => { signalReachedApply = resolve; });
+
+    let reloaded = false;
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      applyOrder: async () => {
+        signalReachedApply();
+        await deferredApply;
+        return { applied: true, waitedMs: 1200 };
+      },
+      reload: () => { reloaded = true; },
+      runTimers: true,
+      sortOrder: [{ id: 'a', setVideoId: 'A' }],
+      playlistId: 'WL',
+    });
+
+    const apply = WLPanel.applySort(); // parks inside applyOrder
+    await reachedApply;
+
+    // Simulate navigating away mid-apply, exactly what resetForNavigation() does
+    // to the run token.
+    WLPanel._runId++;
+
+    resolveApply(); // let the stale apply resolve now that a newer session owns the token
+    await apply;
+
+    assert.equal(reloaded, false, 'a superseded apply must not reload the page out from under a newer session');
+    assert.ok(
+      !modalCalls.showBusy.some(text => text.startsWith('Sort complete')),
+      'a superseded apply must not announce success into a newer session'
+    );
+  });
 });
 
 describe('toggleUnwatched', () => {
@@ -285,5 +321,40 @@ describe('toggleUnwatched', () => {
     await WLPanel.toggleUnwatched('v1');
 
     assert.deepEqual(modalCalls.showError, ['stale clusters']);
+  });
+
+  it('a superseded toggle does not call WLModal.showPreview or mutate currentSortOrder', async () => {
+    let resolveResort;
+    let signalReachedResort;
+    const deferredResort = new Promise((resolve) => { resolveResort = resolve; });
+    const reachedResort = new Promise((resolve) => { signalReachedResort = resolve; });
+
+    const staleOrder = [{ id: 'stale', setVideoId: 'STALE' }];
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async (msg) => {
+        if (msg.type === 'RESORT') {
+          signalReachedResort();
+          await deferredResort;
+          return { success: true, sortOrder: [{ id: 'a', setVideoId: 'A', cluster: null, duration: 10, percentWatched: 0 }] };
+        }
+        throw new Error(`unexpected message ${msg.type}`);
+      },
+      toggleOverride: async () => ['v1'],
+      playlistId: 'PL-A',
+      sortOrder: staleOrder,
+    });
+
+    const toggle = WLPanel.toggleUnwatched('v1'); // parks inside the RESORT sendMessage call
+    await reachedResort;
+
+    // Simulate navigating away mid-toggle, exactly what resetForNavigation() does
+    // to the run token.
+    WLPanel._runId++;
+
+    resolveResort(); // let the stale RESORT resolve now that a newer session owns the token
+    await toggle;
+
+    assert.deepEqual(modalCalls.showPreview, [], 'a superseded toggle must not render into a newer session');
+    assert.deepEqual(WLPanel.currentSortOrder, staleOrder, 'a superseded toggle must not overwrite currentSortOrder');
   });
 });

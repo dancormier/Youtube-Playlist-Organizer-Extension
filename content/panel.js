@@ -60,14 +60,26 @@ const WLPanel = {
     }
   },
 
-  /** Recompute against cached clusters. Never re-calls Claude. */
+  /**
+   * Recompute against cached clusters. Never re-calls Claude.
+   *
+   * Captures (does not bump) the run token: this belongs to the session already
+   * in progress, not a new one, so it must not invalidate a concurrent runSort().
+   * The check exists because navigating away (resetForNavigation() bumps _runId)
+   * while this is in flight must stop it from painting a stale order over
+   * whatever session owns the modal by the time it resolves.
+   */
   async toggleUnwatched(videoId) {
+    const runId = this._runId;
     WLModal.setStatus('Re-sorting...');
 
     const overrides = await WLStorage.toggleOverride(videoId);
+    if (runId !== this._runId) return;
+
     const result = await chrome.runtime.sendMessage({
       type: 'RESORT', overrides, playlistId: this.currentPlaylistId,
     });
+    if (runId !== this._runId) return;
 
     if (!result.success) { WLModal.showError(result.error); return; }
 
@@ -75,7 +87,13 @@ const WLPanel = {
     WLModal.showPreview(result.sortOrder);
   },
 
+  /**
+   * Captures (does not bump) the run token, for the same reason as
+   * toggleUnwatched(): a superseded apply must not reload the page — or even
+   * announce success into the modal — out from under a newer session.
+   */
   async applySort() {
+    const runId = this._runId;
     const playlistId = this.currentPlaylistId;
     const orderedSetVideoIds = this.currentSortOrder.map(v => v.setVideoId);
 
@@ -85,9 +103,10 @@ const WLPanel = {
     try {
       result = await WLPlaylist.applyOrder(playlistId, orderedSetVideoIds);
     } catch (err) {
-      WLModal.showError(err.message);
+      if (runId === this._runId) WLModal.showError(err.message);
       return;
     }
+    if (runId !== this._runId) return;
 
     if (result.applied) {
       WLModal.showBusy(`Sort complete in ${(result.waitedMs / 1000).toFixed(1)}s. Refreshing...`);
@@ -122,6 +141,7 @@ function syncTrigger() {
 function resetForNavigation() {
   WLPanel._runId++;
   WLPanel.currentSortOrder = [];
+  WLPanel.currentPlaylistId = null;
   WLModal.close();
   WLInnerTube.resetConfig();
 }
