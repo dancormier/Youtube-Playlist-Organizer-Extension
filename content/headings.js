@@ -58,10 +58,20 @@ const WLHeadings = {
     return heading;
   },
 
+  /** The already-injected heading for a group, wherever it currently sits, or null. */
+  _headingFor(name) {
+    for (const heading of document.querySelectorAll(`[${this.ATTRIBUTE}]`)) {
+      if (heading.getAttribute(this.ATTRIBUTE) === name) return heading;
+    }
+    return null;
+  },
+
   /**
    * Insert a heading before the first item of each group.
-   * Idempotent — an existing heading for a group is left alone, so this can be
-   * re-run freely as YouTube appends more items.
+   * Idempotent by identity, not position — if a group's heading already exists
+   * anywhere in the list it is moved into place rather than duplicated, so this
+   * self-heals if something lands between a heading and its anchor item, and can
+   * be re-run freely as YouTube appends more items.
    */
   inject(boundaries) {
     let placed = 0;
@@ -70,8 +80,11 @@ const WLHeadings = {
       const item = this._itemFor(videoId);
       if (!item) continue;
 
-      const previous = item.previousElementSibling;
-      if (previous && previous.getAttribute?.(this.ATTRIBUTE) === name) {
+      const existing = this._headingFor(name);
+      if (existing) {
+        if (item.previousElementSibling !== existing) {
+          item.parentNode.insertBefore(existing, item);
+        }
         placed++;
         continue;
       }
@@ -82,7 +95,18 @@ const WLHeadings = {
     return placed;
   },
 
+  /**
+   * Remove every injected heading and cancel any debounced re-injection in
+   * flight. Cancelling the debounce matters: without it, a mutation that landed
+   * just before clear() runs could fire its queued inject() afterward and put
+   * the headings straight back with stale boundaries. Safe to call whether or
+   * not watch() has an observer running — leaves that alone; use stop() for that.
+   */
   clear() {
+    clearTimeout(this._debounce);
+    this._debounce = null;
+    this._boundaries = [];
+
     for (const heading of document.querySelectorAll(`[${this.ATTRIBUTE}]`)) {
       heading.remove();
     }
@@ -97,12 +121,15 @@ const WLHeadings = {
     this.stop();
     this.inject(boundaries);
 
-    const container = document.querySelector(SELECTORS.PLAYLIST_ITEMS)?.parentNode;
-    if (!container) return;
-
     this._observer = new MutationObserver((mutations) => {
       // Ignore mutations we caused ourselves, or the observer re-triggers forever.
+      // A batch counts as "ours" only if it added at least one node, removed
+      // none, and every added node is one of our own headings — `.every()` on
+      // an empty addedNodes list (a removal-only batch) is vacuously true, so
+      // that case must be excluded explicitly or removals are silently ignored.
       const ours = mutations.every(m =>
+        m.addedNodes.length > 0 &&
+        m.removedNodes.length === 0 &&
         [...m.addedNodes].every(n => n.nodeType === 1 && n.hasAttribute?.(this.ATTRIBUTE))
       );
       if (ours) return;
@@ -111,7 +138,10 @@ const WLHeadings = {
       this._debounce = setTimeout(() => this.inject(this._boundaries), 200);
     });
 
-    this._observer.observe(container, { childList: true });
+    // Observe from document.body, not a resolved playlist container: on first
+    // load the playlist hasn't rendered yet, so querying for its container
+    // would find nothing and silently skip attaching the observer entirely.
+    this._observer.observe(document.body, { childList: true, subtree: true });
   },
 
   stop() {

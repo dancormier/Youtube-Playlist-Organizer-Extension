@@ -133,6 +133,13 @@ function fakePlaylist(videoIds) {
   };
 
   container.insertBefore = (node, ref) => {
+    // Real DOM insertBefore() moves a node already in the tree rather than
+    // duplicating it — remove any prior placement first so this fixture
+    // matches that, which inject()'s drift-repair (moving an existing
+    // heading back into place) depends on.
+    const existingIndex = container.children.indexOf(node);
+    if (existingIndex !== -1) container.children.splice(existingIndex, 1);
+
     const i = container.children.indexOf(ref);
     container.children.splice(i === -1 ? container.children.length : i, 0, node);
     node.parentNode = container;
@@ -167,6 +174,9 @@ function fakePlaylist(videoIds) {
     querySelector: (sel) => (sel === SELECTORS.PLAYLIST_ITEMS
       ? container.children.find(el => el._isItem) ?? null
       : null),
+    // watch() observes document.body directly (not a resolved playlist
+    // container) so it can attach before the playlist has rendered at all.
+    body: {},
   };
 
   return {
@@ -288,9 +298,32 @@ describe('WLHeadings.watch', () => {
     const injectedHeading = container.children.find(el => el.tagName === 'h2');
 
     // Simulate the observer seeing the mutation that inject() itself just caused.
-    observerCallback([{ addedNodes: [injectedHeading] }]);
+    observerCallback([{ addedNodes: [injectedHeading], removedNodes: [] }]);
 
     assert.equal(clock.scheduled, false);
+  });
+
+  it('does not ignore a removal-only mutation batch (regression: .every() on an empty addedNodes list is vacuously true)', () => {
+    const { document } = fakePlaylist(['a']);
+    const clock = fakeClock();
+    let observerCallback;
+    const FakeObserver = class {
+      constructor(cb) { observerCallback = cb; }
+      observe() {}
+      disconnect() {}
+    };
+    const headings = loadGlobal('content/headings.js', 'WLHeadings', {
+      document, SELECTORS, MutationObserver: FakeObserver,
+      setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout,
+    });
+
+    headings.watch(headings.boundariesFrom([video({ id: 'a', cluster: 'Music' })]));
+
+    // YouTube removed an item (delisted video, virtualized re-render) — no
+    // nodes were added, only removed.
+    observerCallback([{ addedNodes: [], removedNodes: [{ nodeType: 1 }] }]);
+
+    assert.equal(clock.scheduled, true, 'a removal must still schedule a re-injection, not be treated as our own no-op');
   });
 
   it('debounces a real YouTube append and re-injects once flushed', () => {
@@ -315,11 +348,72 @@ describe('WLHeadings.watch', () => {
 
     const newItem = { nodeType: 1, _isItem: true };
     addItem('b');
-    observerCallback([{ addedNodes: [newItem] }]);
+    observerCallback([{ addedNodes: [newItem], removedNodes: [] }]);
     assert.equal(clock.scheduled, true, 'a real append must schedule a debounced re-injection');
 
     clock.flush();
     assert.equal(container.children.filter(el => el.tagName === 'h2').length, 2);
+  });
+
+  it('attaches even when no playlist item exists yet, and injects once items appear', () => {
+    // No items at all yet — this is the state of the page on first load,
+    // before YouTube has rendered a single ytd-playlist-video-renderer.
+    const { document, container, addItem } = fakePlaylist([]);
+    const clock = fakeClock();
+    let observerCallback;
+    let observeCalls = 0;
+    const FakeObserver = class {
+      constructor(cb) { observerCallback = cb; }
+      observe() { observeCalls++; }
+      disconnect() {}
+    };
+    const headings = loadGlobal('content/headings.js', 'WLHeadings', {
+      document, SELECTORS, MutationObserver: FakeObserver,
+      setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout,
+    });
+
+    headings.watch(headings.boundariesFrom([video({ id: 'a', cluster: 'Music' })]));
+
+    assert.equal(observeCalls, 1, 'the observer must attach even though the playlist has not rendered yet');
+    assert.equal(container.children.filter(el => el.tagName === 'h2').length, 0, 'nothing to inject before yet');
+
+    // The playlist renders its first item.
+    addItem('a');
+    observerCallback([{ addedNodes: [{ nodeType: 1 }], removedNodes: [] }]);
+    clock.flush();
+
+    assert.equal(container.children.filter(el => el.tagName === 'h2').length, 1);
+  });
+
+  it('clear() cancels a pending debounce, so a queued re-injection cannot undo it', () => {
+    const { document, container } = fakePlaylist(['a']);
+    const clock = fakeClock();
+    let observerCallback;
+    const FakeObserver = class {
+      constructor(cb) { observerCallback = cb; }
+      observe() {}
+      disconnect() {}
+    };
+    const headings = loadGlobal('content/headings.js', 'WLHeadings', {
+      document, SELECTORS, MutationObserver: FakeObserver,
+      setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout,
+    });
+
+    headings.watch(headings.boundariesFrom([video({ id: 'a', cluster: 'Music' })]));
+    assert.equal(container.children.filter(el => el.tagName === 'h2').length, 1);
+
+    // A mutation lands and schedules a debounced re-injection...
+    observerCallback([{ addedNodes: [{ nodeType: 1 }], removedNodes: [] }]);
+    assert.equal(clock.scheduled, true, 'setup: a debounce should be pending');
+
+    // ...but the caller clears headings before that debounce fires.
+    headings.clear();
+    assert.equal(container.children.filter(el => el.tagName === 'h2').length, 0);
+
+    clock.flush();
+
+    assert.equal(container.children.filter(el => el.tagName === 'h2').length, 0,
+      'a queued re-injection must not resurrect headings after clear()');
   });
 
   it('stop() disconnects the observer and cancels a pending debounce', () => {
@@ -338,12 +432,37 @@ describe('WLHeadings.watch', () => {
     });
 
     headings.watch(headings.boundariesFrom([video({ id: 'a', cluster: 'Music' })]));
-    observerCallback([{ addedNodes: [{ nodeType: 1 }] }]); // a real append schedules a debounce
+    observerCallback([{ addedNodes: [{ nodeType: 1 }], removedNodes: [] }]); // a real append schedules a debounce
     assert.equal(clock.scheduled, true, 'setup: a debounce should be pending before stop()');
 
     headings.stop();
 
     assert.equal(disconnected, true);
     assert.equal(clock.scheduled, false, 'stop() must cancel the pending debounce, not just disconnect');
+  });
+});
+
+describe('WLHeadings.inject drift repair', () => {
+  it('repositions a drifted heading instead of duplicating it when a stray node lands between it and its anchor', () => {
+    const { document, container } = fakePlaylist(['a']);
+    const headings = loadGlobal('content/headings.js', 'WLHeadings', {
+      document, SELECTORS, MutationObserver: class { observe() {} disconnect() {} },
+    });
+    const boundaries = headings.boundariesFrom([video({ id: 'a', cluster: 'Music' })]);
+
+    headings.inject(boundaries);
+    const itemA = container.children.find(el => el._isItem);
+
+    // Something (YouTube re-render, another script) inserts a node between
+    // the heading and its anchor item.
+    const stray = { nodeType: 1, tagName: 'div' };
+    container.insertBefore(stray, itemA);
+    assert.deepEqual(container.children.map(el => el.tagName), ['h2', 'div', undefined]);
+
+    const placed = headings.inject(boundaries);
+
+    assert.equal(placed, 1);
+    assert.equal(container.children.filter(el => el.tagName === 'h2').length, 1, 'must not duplicate the heading');
+    assert.deepEqual(container.children.map(el => el.tagName), ['div', 'h2', undefined]);
   });
 });
