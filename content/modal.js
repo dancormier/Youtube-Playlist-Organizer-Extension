@@ -310,7 +310,15 @@ const WLModal = {
     this._root?.remove();
     this._root = null;
 
-    this._lastFocused?.focus?.();
+    // The element that had focus when the modal opened may have since been
+    // removed from the DOM — routine on an SPA like YouTube that re-renders
+    // its header constantly. Focusing a detached node is a silent no-op, so
+    // fall back to the trigger (where the user came from) rather than
+    // stranding focus on <body>.
+    const restoreTarget = this._lastFocused?.isConnected
+      ? this._lastFocused
+      : document.querySelector('#wl-trigger');
+    restoreTarget?.focus?.();
     this._lastFocused = null;
   },
 };

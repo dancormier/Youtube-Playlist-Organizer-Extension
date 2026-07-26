@@ -77,26 +77,37 @@ describe('WLModal.metaFor', () => {
 });
 
 /**
- * Minimal document stub covering only what mountTrigger/removeTrigger touch.
- * The rest of WLModal's DOM-rendering methods need far more of the DOM API
- * (innerHTML parsing, event delegation, focus management) than is worth
- * faking without a real jsdom dependency, so those remain manually verified.
+ * Minimal document stub covering only what mountTrigger/removeTrigger/close
+ * touch. The rest of WLModal's DOM-rendering methods need far more of the
+ * DOM API (innerHTML parsing, event delegation) than is worth faking without
+ * a real jsdom dependency, so those remain manually verified.
+ *
+ * `isConnected` mirrors the real DOM property: an element is connected iff
+ * it is present in this document's `elements` list (i.e. was appended and
+ * not since removed). This is enough fidelity to test close()'s fallback
+ * logic honestly without pulling in a DOM library.
  */
 function fakeDocument() {
   const elements = [];
-  const makeElement = (tag) => ({
-    tagName: tag,
-    id: '',
-    className: '',
-    children: [],
-    _listeners: {},
-    setAttribute() {},
-    addEventListener(type, fn) { this._listeners[type] = fn; },
-    remove() {
-      const i = elements.indexOf(this);
-      if (i !== -1) elements.splice(i, 1);
-    },
-  });
+  const makeElement = (tag) => {
+    const el = {
+      tagName: tag,
+      id: '',
+      className: '',
+      children: [],
+      _listeners: {},
+      _focused: false,
+      setAttribute() {},
+      addEventListener(type, fn) { this._listeners[type] = fn; },
+      focus() { this._focused = true; },
+      remove() {
+        const i = elements.indexOf(el);
+        if (i !== -1) elements.splice(i, 1);
+      },
+    };
+    Object.defineProperty(el, 'isConnected', { get: () => elements.includes(el) });
+    return el;
+  };
 
   return {
     _elements: elements, // exposed for test introspection only; not part of the real DOM API
@@ -150,5 +161,56 @@ describe('WLModal.removeTrigger', () => {
     const modal = loadGlobal('content/modal.js', 'WLModal', { document });
 
     assert.doesNotThrow(() => modal.removeTrigger());
+  });
+});
+
+describe('WLModal.close', () => {
+  // These tests poke _lastFocused/_root directly rather than going through
+  // open(), which needs far more DOM fidelity (innerHTML parsing) than this
+  // stub provides. That's an honest trade: it means these tests exercise
+  // close()'s focus-restoration branch in isolation, not the full open→close
+  // lifecycle, but the branch itself — connected vs. detached — is exactly
+  // what changed and what the stub can model faithfully via `isConnected`.
+
+  it('restores focus to the last-focused element when it is still connected', () => {
+    const document = fakeDocument();
+    const modal = loadGlobal('content/modal.js', 'WLModal', { document });
+
+    const field = document.createElement('input');
+    document.body.appendChild(field); // connected
+
+    modal._lastFocused = field;
+    modal._root = null;
+    modal.close();
+
+    assert.equal(field._focused, true);
+  });
+
+  it('falls back to the trigger when the last-focused element has been detached', () => {
+    const document = fakeDocument();
+    const modal = loadGlobal('content/modal.js', 'WLModal', { document });
+
+    const detached = document.createElement('input'); // never appended — not connected
+    modal.mountTrigger({ onOpen: () => {} });
+
+    modal._lastFocused = detached;
+    modal._root = null;
+    modal.close();
+
+    assert.equal(detached._focused, false, 'must not focus a detached node');
+    assert.equal(document.querySelector('#wl-trigger')._focused, true);
+  });
+
+  it('does nothing when both the last-focused element and the trigger are gone', () => {
+    const document = fakeDocument();
+    const modal = loadGlobal('content/modal.js', 'WLModal', { document });
+
+    const detached = document.createElement('input'); // never appended, no trigger mounted
+
+    modal._lastFocused = detached;
+    modal._root = null;
+
+    assert.doesNotThrow(() => modal.close());
+    assert.equal(detached._focused, false);
   });
 });
