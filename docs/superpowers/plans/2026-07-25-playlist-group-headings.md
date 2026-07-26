@@ -430,42 +430,61 @@ git commit -m "feat(headings): inject group dividers that survive lazy loading"
 
 - [ ] **Step 1: Persist boundaries after a successful apply**
 
-In `content/panel.js`, inside `applySort`, replace:
+`content/panel.js` was rewritten for the floating trigger and modal, so the
+success branch of `applySort` now reads:
 
 ```js
     if (result.applied) {
-      this.showIdleWithMessage(`Sort complete in ${(result.waitedMs / 1000).toFixed(1)}s.`);
+      WLModal.showBusy(`Sort complete in ${(result.waitedMs / 1000).toFixed(1)}s. Refreshing...`);
+      // YouTube's DOM does not reflect the reordered playlist, so a successful
+      // sort otherwise looks like nothing happened.
+      setTimeout(() => location.reload(), 1200);
 ```
 
-with:
+Replace it with:
 
 ```js
     if (result.applied) {
-      const boundaries = WLHeadings.boundariesFrom(this.currentSortOrder);
-
+      // Persist BEFORE the reload — the reload is what makes headings necessary,
+      // and it destroys any in-memory state that isn't written first.
       await WLStorage.setGroupMap({
         playlistId,
-        boundaries,
+        boundaries: WLHeadings.boundariesFrom(this.currentSortOrder),
         videoIdsHash: WLHeadings.hashIds(this.currentSortOrder),
       });
 
-      WLHeadings.watch(boundaries);
-      this.showIdleWithMessage(`Sort complete in ${(result.waitedMs / 1000).toFixed(1)}s.`);
+      WLModal.showBusy(`Sort complete in ${(result.waitedMs / 1000).toFixed(1)}s. Refreshing...`);
+      // YouTube's DOM does not reflect the reordered playlist, so a successful
+      // sort otherwise looks like nothing happened.
+      setTimeout(() => location.reload(), 1200);
 ```
+
+Note `playlistId` is already a local in `applySort` (captured from
+`this.currentPlaylistId` at the top), so no extra lookup is needed. There is no
+`WLHeadings.watch()` call here — the reload discards the DOM immediately, and
+Step 2 re-injects on the fresh page.
 
 - [ ] **Step 2: Restore headings on page load**
 
 Add this method to the `WLPanel` object in `content/panel.js`:
 
 ```js
+  _headingsRestoredFor: null,
+
   /**
    * Re-apply stored headings after a reload. Discards them when the playlist's
    * contents have changed, since stale groupings are worse than none.
+   *
+   * Called from syncTrigger(), which fires on every DOM mutation batch, so it
+   * must do its work at most once per playlist — hence the guard. Without it
+   * this would issue an InnerTube read per mutation.
    */
   async restoreHeadings() {
     const playlistId = new URL(location.href).searchParams.get('list');
-    const stored = await WLStorage.getGroupMap();
+    if (!playlistId || this._headingsRestoredFor === playlistId) return;
+    this._headingsRestoredFor = playlistId;
 
+    const stored = await WLStorage.getGroupMap();
     if (!stored.boundaries || stored.playlistId !== playlistId) return;
 
     let videos;
@@ -483,22 +502,57 @@ Add this method to the `WLPanel` object in `content/panel.js`:
   },
 ```
 
-- [ ] **Step 3: Call it after injection**
+- [ ] **Step 3: Restore whenever we land on a playlist page**
 
-At the end of the `inject` method in `content/panel.js`, after `this.bindEvents();`, add:
+There is no longer an `inject()` method — the panel was replaced by a floating
+trigger. `syncTrigger()` is now the single place that knows we are on a playlist
+page, so restoration hangs off it. In `content/panel.js`, change:
 
 ```js
-    this.restoreHeadings();
+function syncTrigger() {
+  if (onPlaylistPage()) {
+    WLModal.mountTrigger({ onOpen: () => WLPanel.openModal() });
+  } else {
+    WLModal.removeTrigger();
+    WLModal.close();
+  }
+}
 ```
+
+to:
+
+```js
+function syncTrigger() {
+  if (onPlaylistPage()) {
+    WLModal.mountTrigger({ onOpen: () => WLPanel.openModal() });
+    WLPanel.restoreHeadings();
+  } else {
+    WLModal.removeTrigger();
+    WLModal.close();
+    WLHeadings.stop();
+    WLHeadings.clear();
+  }
+}
+```
+
+`syncTrigger()` runs on every mutation batch, so `restoreHeadings()` must be
+cheap and idempotent when there is nothing to do. Guard it with a flag so it
+performs at most one `WLPlaylist.read()` per page — without that you would fire
+an API call per mutation, which on YouTube is continuous.
 
 - [ ] **Step 4: Clear headings on SPA navigation**
 
-In `content/panel.js`, inside the `pageObserver` callback where the URL change is handled, after `WLPanel.lastVideoHash = null;` add:
+In `content/panel.js`, inside `resetForNavigation()`, after
+`WLInnerTube.resetConfig();` add:
 
 ```js
-    WLHeadings.stop();
-    WLHeadings.clear();
+  WLHeadings.stop();
+  WLHeadings.clear();
+  WLPanel._headingsRestoredFor = null;
 ```
+
+That last line resets the guard from Step 3 so the next playlist gets its own
+restoration attempt.
 
 - [ ] **Step 5: Run the full suite**
 
