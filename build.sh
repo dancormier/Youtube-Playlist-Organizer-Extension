@@ -17,9 +17,12 @@ SHARED=(
   content/innertube.js
   content/playlist.js
   content/enrich.js
+  content/storage.js
+  content/modal.js
   content/panel.js
   styles/content.css
   styles/panel.css
+  styles/modal.css
   popup/popup.html
   popup/popup.css
   popup/popup.js

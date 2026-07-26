@@ -75,3 +75,80 @@ describe('WLModal.metaFor', () => {
     assert.ok(!load().metaFor({ cluster: null, duration: 600 }).includes('NaN'));
   });
 });
+
+/**
+ * Minimal document stub covering only what mountTrigger/removeTrigger touch.
+ * The rest of WLModal's DOM-rendering methods need far more of the DOM API
+ * (innerHTML parsing, event delegation, focus management) than is worth
+ * faking without a real jsdom dependency, so those remain manually verified.
+ */
+function fakeDocument() {
+  const elements = [];
+  const makeElement = (tag) => ({
+    tagName: tag,
+    id: '',
+    className: '',
+    children: [],
+    _listeners: {},
+    setAttribute() {},
+    addEventListener(type, fn) { this._listeners[type] = fn; },
+    remove() {
+      const i = elements.indexOf(this);
+      if (i !== -1) elements.splice(i, 1);
+    },
+  });
+
+  return {
+    _elements: elements, // exposed for test introspection only; not part of the real DOM API
+    body: { appendChild(el) { elements.push(el); } },
+    createElement(tag) { return makeElement(tag); },
+    querySelector(selector) {
+      if (selector === '#wl-trigger') return elements.find(el => el.id === 'wl-trigger') ?? null;
+      return null;
+    },
+  };
+}
+
+describe('WLModal.mountTrigger', () => {
+  it('is idempotent: two calls append exactly one #wl-trigger button', () => {
+    const document = fakeDocument();
+    const modal = loadGlobal('content/modal.js', 'WLModal', { document });
+
+    modal.mountTrigger({ onOpen: () => {} });
+    modal.mountTrigger({ onOpen: () => {} });
+
+    const triggers = document._elements.filter(el => el.id === 'wl-trigger');
+    assert.equal(triggers.length, 1);
+  });
+
+  it('wires the click handler to call onOpen', () => {
+    const document = fakeDocument();
+    const modal = loadGlobal('content/modal.js', 'WLModal', { document });
+
+    let opened = false;
+    modal.mountTrigger({ onOpen: () => { opened = true; } });
+    document._elements[0]._listeners.click();
+
+    assert.equal(opened, true);
+  });
+});
+
+describe('WLModal.removeTrigger', () => {
+  it('removes a mounted trigger', () => {
+    const document = fakeDocument();
+    const modal = loadGlobal('content/modal.js', 'WLModal', { document });
+
+    modal.mountTrigger({ onOpen: () => {} });
+    assert.ok(document.querySelector('#wl-trigger'));
+
+    modal.removeTrigger();
+    assert.equal(document.querySelector('#wl-trigger'), null);
+  });
+
+  it('is a no-op when no trigger is mounted', () => {
+    const document = fakeDocument();
+    const modal = loadGlobal('content/modal.js', 'WLModal', { document });
+
+    assert.doesNotThrow(() => modal.removeTrigger());
+  });
+});

@@ -11,8 +11,8 @@
   "content_scripts": [
     {
       "matches": ["https://www.youtube.com/*"],
-      "js": ["content/selectors.js", "content/innertube.js", "content/playlist.js", "content/enrich.js", "content/panel.js"],
-      "css": ["styles/content.css", "styles/panel.css"]
+      "js": ["content/selectors.js", "content/innertube.js", "content/playlist.js", "content/enrich.js", "content/storage.js", "content/modal.js", "content/panel.js"],
+      "css": ["styles/content.css", "styles/panel.css", "styles/modal.css"]
     }
   ],
   "action": {
