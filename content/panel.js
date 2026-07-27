@@ -12,7 +12,37 @@ const WLPanel = {
       onApply: () => this.applySort(),
       onCancel: () => { this._runId++; this.currentSortOrder = []; },
       onToggleUnwatched: (videoId) => this.toggleUnwatched(videoId),
+      onHideHeadings: () => this.hideHeadings(),
+      onFreezeHeadings: () => this.freezeHeadings(),
     });
+  },
+
+  /**
+   * Remove the headings and stop them coming back. Clearing the stored group
+   * map is the part that makes this stick — without it, restoreHeadings()
+   * re-injects everything on the next page load.
+   */
+  async hideHeadings() {
+    WLHeadings.stop();
+    WLHeadings.clear();
+    WLModal.close();
+    try {
+      await WLStorage.setGroupMap({});
+    } catch (err) {
+      console.warn('WLPanel: failed to clear the stored group map; headings will return on reload', err);
+    }
+  },
+
+  /**
+   * TEMPORARY — diagnostic for "headings break drag-and-drop". Stops the
+   * observer but leaves the heading nodes in place, so drag can be tested with
+   * exactly one of the two suspected causes removed. Delete along with the
+   * modal button once the cause is settled.
+   */
+  freezeHeadings() {
+    WLHeadings.stop();
+    WLModal.close();
+    console.info(WL_LOG, 'headings observer stopped; heading nodes left in place');
   },
 
   /**
@@ -124,20 +154,28 @@ const WLPanel = {
       // or leave the modal stuck. It gets its own try/catch rather than joining
       // the applyOrder one, and failure is logged but otherwise swallowed.
       // Duration-mode sorts yield an empty boundaries array (no `cluster` key
-      // at all on any video — see WLHeadings.boundariesFrom). Storing an empty
-      // grouping is meaningless and would just give restoreHeadings() nothing
-      // useful to restore, so skip the write entirely in that case.
+      // at all on any video — see WLHeadings.boundariesFrom).
       const boundaries = WLHeadings.boundariesFrom(this.currentSortOrder);
-      if (boundaries.length > 0) {
-        try {
+      try {
+        if (boundaries.length > 0) {
           await WLStorage.setGroupMap({
             playlistId,
             boundaries,
             videoIdsHash: WLHeadings.hashIds(this.currentSortOrder),
           });
-        } catch (err) {
-          console.warn('WLPanel: failed to persist group map; headings will not restore after reload', err);
+        } else {
+          // The stored map must be CLEARED here, not left alone. Skipping the
+          // write is not neutral: a previous AI sort's grouping survives it,
+          // and restoreHeadings() then re-injects those headings after the
+          // reload, scattered through the new duration order. Its staleness
+          // check does not catch this — hashIds is order-independent, so
+          // reordering the same set of videos never trips it.
+          WLHeadings.stop();
+          WLHeadings.clear();
+          await WLStorage.setGroupMap({});
         }
+      } catch (err) {
+        console.warn('WLPanel: failed to persist group map; headings may be stale after reload', err);
       }
       // Re-check ownership: the await above is a window resetForNavigation()'s
       // synchronous _runId bump can land in, same as every other await in this

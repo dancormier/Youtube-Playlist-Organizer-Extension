@@ -379,25 +379,32 @@ describe('applySort — group map persistence', () => {
     assert.equal(persistedMap.playlistId, 'WL');
   });
 
-  it('persists nothing in duration mode, where boundariesFrom returns an empty array', async () => {
+  it('clears the stored group map in duration mode, where boundariesFrom returns an empty array', async () => {
+    // Regression: this used to SKIP the write when boundaries were empty, which
+    // is not neutral — a previous AI sort's grouping survived it, and
+    // restoreHeadings() re-injected those headings after the reload, scattered
+    // through the new duration order. Its staleness check does not catch that,
+    // because hashIds is order-independent: re-sorting the same set of videos
+    // leaves the hash identical. The write must therefore clear the map.
+    //
     // buildDurationSortOrder videos carry no `cluster` key at all, so the real
-    // WLHeadings.boundariesFrom(...) returns []. Storing an empty grouping is
-    // meaningless and would leave restoreHeadings() with nothing useful to
-    // restore, so applySort must skip the write entirely in that case. Uses
-    // loadPanel() directly (not loadPanelWithStubs, whose default
-    // WLHeadings.boundariesFrom stub just echoes the order back) so the
-    // empty-boundaries case can actually be exercised.
-    let setGroupMapCalled = false;
+    // WLHeadings.boundariesFrom(...) returns []. Uses loadPanel() directly (not
+    // loadPanelWithStubs, whose default WLHeadings.boundariesFrom stub just
+    // echoes the order back) so the empty-boundaries case is actually exercised.
+    const stored = [];
+    const headingCalls = [];
 
     const WLPanel = loadPanel({
       WLPlaylist: { applyOrder: async () => ({ applied: true, waitedMs: 1200 }) },
       WLHeadings: {
         boundariesFrom: () => [],
         hashIds: () => 'hash',
-        watch() {}, stop() {}, clear() {},
+        watch() {},
+        stop() { headingCalls.push('stop'); },
+        clear() { headingCalls.push('clear'); },
       },
       WLStorage: {
-        setGroupMap: async () => { setGroupMapCalled = true; },
+        setGroupMap: async (map) => { stored.push(map); },
         getGroupMap: async () => ({}),
       },
       location: { ...locationStub, reload: () => {} },
@@ -406,9 +413,19 @@ describe('applySort — group map persistence', () => {
     WLPanel.currentSortOrder = [{ id: 'a', setVideoId: 'A', duration: 60 }];
     WLPanel.currentPlaylistId = 'WL';
 
+    // Loading the module runs onPageChange('load-time'), and locationStub is
+    // not a playlist URL, so syncTrigger's not-a-playlist-page branch already
+    // called stop()/clear() once. Drop those so the assertion below is about
+    // applySort and nothing else.
+    headingCalls.length = 0;
+
     await WLPanel.applySort();
 
-    assert.equal(setGroupMapCalled, false, 'a duration-mode apply must not persist an empty group map');
+    assert.equal(stored.length, 1, 'a duration-mode apply must write, not skip');
+    assert.deepEqual({ ...stored[0] }, {}, 'the write must clear the stored grouping');
+    // The reload normally destroys these anyway; they matter when it is
+    // cancelled or fails, which would otherwise leave stale headings on screen.
+    assert.deepEqual([...headingCalls], ['stop', 'clear'], 'live headings must be torn down too');
   });
 
   it('persists nothing when the apply did not converge', async () => {
