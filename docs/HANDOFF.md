@@ -1,7 +1,7 @@
-# Handoff — YouTube Watch Later Organizer
+# Handoff — YouTube Playlist Organizer
 
 **Written:** 2026-07-27 · **Last updated:** 2026-07-27
-**Remote:** [github.com/dancormier/youtube-wl-organizer](https://github.com/dancormier/youtube-wl-organizer) — private, default branch `main`
+**Remote:** [github.com/dancormier/youtube-playlist-organizer](https://github.com/dancormier/youtube-playlist-organizer) — private, default branch `main`
 **Version:** 0.6.0 · **Tests:** 185 passing · **Working tree:** clean
 
 **All four original issues are closed and verified in Firefox by Dan**, along with one found afterwards (stale headings after re-sorting). Read this before touching anything: it covers what the extension does, what was measured rather than assumed, and what is decided and why.
@@ -100,7 +100,8 @@ background/
 - **Testing content-script globals:** `tests/helpers/load-global.js` evaluates them in a `node:vm` sandbox. **Do not modify that file** — it is shared by every test. One task added 65 lines of Proxy machinery to it, which didn't work and was reverted.
 - **vm-realm gotcha:** arrays/objects created inside the sandbox carry the sandbox's constructors, so `assert.deepEqual` rejects them against outer-realm literals. **Normalise at the assertion** by spreading: `assert.deepEqual([...result], [...])`. This will bite you; it is not the implementation's fault.
 - **Commits:** Conventional Commits. **Never add AI attribution** to any git artifact.
-- **Branch:** feature branches only, `dcormier/*`. Nothing is pushed; there is no remote.
+- **Branches:** `main` is the default branch on the private remote. Feature work goes on `dcormier/*` branches.
+- **Naming:** the project was renamed from "YouTube Watch Later Organizer" on 2026-07-27, since it handles any playlist. The `WL*` prefix on the content-script globals (`WLPanel`, `WLModal`, …) was deliberately left alone — renaming them is pure churn with no user-visible effect. Older docs under `docs/superpowers/` keep the old name as historical record.
 
 ---
 
@@ -225,5 +226,5 @@ Other repeat offenders:
 - **Spec:** `docs/superpowers/specs/2026-07-25-innertube-rewrite-design.md`
 - **Plans:** `docs/superpowers/plans/` — foundation, usability fixes, floating trigger + modal, group headings, trigger diagnosis. `2026-07-25-modal-and-overrides.md` is superseded; the note at its end says so
 - **SDD ledgers and per-task reports:** `.superpowers/sdd/<plan>/progress.md` (gitignored, on disk only)
-- **Project note:** `~/Obsidian/personal/Projects/YouTube Watch Later Organizer.md`
+- **Project note:** `~/Obsidian/personal/Projects/YouTube Playlist Organizer.md`
 - **Build:** `./build.sh` → `dist/chrome/`, `dist/firefox/`, and an unsigned `.xpi`. Load `dist/firefox/` via `about:debugging#/runtime/this-firefox`

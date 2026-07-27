@@ -1,4 +1,4 @@
-# YouTube Watch Later Organizer
+# YouTube Playlist Organizer
 
 A Firefox-first browser extension that sorts a YouTube playlist — primarily **Watch Later** — into topic groups using Claude, or by duration.
 
@@ -24,7 +24,7 @@ npm install
 ./build.sh
 ```
 
-That produces `dist/firefox/`, `dist/chrome/`, and an unsigned `dist/youtube-wl-organizer.xpi`.
+That produces `dist/firefox/`, `dist/chrome/`, and an unsigned `dist/youtube-playlist-organizer.xpi`.
 
 ### Firefox
 

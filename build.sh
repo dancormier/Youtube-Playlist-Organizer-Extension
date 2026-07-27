@@ -82,7 +82,7 @@ node --check dist/firefox/background/background.bundle.js
 
 # ── Package Firefox .xpi ──
 if command -v web-ext >/dev/null 2>&1; then
-  web-ext build --source-dir dist/firefox --artifacts-dir dist --filename youtube-wl-organizer.xpi --overwrite-dest 2>/dev/null
+  web-ext build --source-dir dist/firefox --artifacts-dir dist --filename youtube-playlist-organizer.xpi --overwrite-dest 2>/dev/null
 else
   echo "web-ext not found — skipping .xpi packaging" >&2
 fi
@@ -91,6 +91,6 @@ echo ""
 echo "Build complete:"
 echo "  dist/chrome/                    — load as unpacked in chrome://extensions"
 echo "  dist/firefox/                   — load as temporary add-on in about:debugging"
-if [ -f dist/youtube-wl-organizer.xpi ]; then
-echo "  dist/youtube-wl-organizer.xpi   — installable Firefox add-on (unsigned)"
+if [ -f dist/youtube-playlist-organizer.xpi ]; then
+echo "  dist/youtube-playlist-organizer.xpi   — installable Firefox add-on (unsigned)"
 fi
