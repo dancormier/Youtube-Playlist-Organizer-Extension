@@ -23,6 +23,12 @@ const WLPlaylist = {
     const title = this._text(renderer.title);
     const resume = WLInnerTube.findAll(renderer, 'percentDurationWatched');
 
+    // Two signals, both kept: `isPlayable: false` is YouTube's explicit marker for
+    // deleted/private entries, but the field is omitted on many normal entries, so
+    // the check must be strict `=== false` and cannot stand alone. A falsy title
+    // stays as the fallback for ghosts that arrive with the field missing.
+    const unavailable = renderer.isPlayable === false || !title;
+
     return {
       id: renderer.videoId || '',
       setVideoId: renderer.setVideoId,
@@ -32,7 +38,7 @@ const WLPlaylist = {
       percentWatched: resume.length ? Number(resume[0]) : 0,
       category: null,
       description: null,
-      unavailable: !title,
+      unavailable,
     };
   },
 

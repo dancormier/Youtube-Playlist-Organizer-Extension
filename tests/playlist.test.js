@@ -69,6 +69,32 @@ describe('WLPlaylist.normalize', () => {
     assert.equal(video.title, '[Unavailable]');
   });
 
+  it('marks isPlayable:false as unavailable even when the title is present', () => {
+    const video = load().normalize(
+      renderer({ isPlayable: false, title: { runs: [{ text: 'Deleted video' }] } })
+    );
+    assert.equal(video.unavailable, true);
+    assert.equal(video.title, 'Deleted video');
+  });
+
+  it('falls back to the falsy-title check when isPlayable is absent', () => {
+    const input = renderer({ title: undefined });
+    assert.equal('isPlayable' in input, false);
+    const video = load().normalize(input);
+    assert.equal(video.unavailable, true);
+  });
+
+  it('treats isPlayable:true with a normal title as available', () => {
+    const video = load().normalize(renderer({ isPlayable: true }));
+    assert.equal(video.unavailable, false);
+  });
+
+  it('treats an absent isPlayable with a normal title as available', () => {
+    const input = renderer();
+    assert.equal('isPlayable' in input, false);
+    assert.equal(load().normalize(input).unavailable, false);
+  });
+
   it('returns null when there is no setVideoId, since reorder is impossible', () => {
     assert.equal(load().normalize(renderer({ setVideoId: undefined })), null);
   });
