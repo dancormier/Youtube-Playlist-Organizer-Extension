@@ -132,3 +132,69 @@ describe('buildSortOrder', () => {
     assert.equal(new Set(order.map(v => v.id)).size, videos.length);
   });
 });
+
+describe('buildSortOrder cluster-name folding', () => {
+  it('folds a differently-cased taxonomy name onto the taxonomy spelling', () => {
+    // Regression: group identity is a plain string match, so "tech & ai" and
+    // "Tech & AI" produced two groups and two headings for one category.
+    const videos = [video({ id: 'a' }), video({ id: 'b' })];
+    const order = buildSortOrder(videos, {
+      clusters: [
+        { name: 'Tech & AI', videoIds: ['a'] },
+        { name: 'tech & ai', videoIds: ['b'] },
+      ],
+    }, []);
+
+    assert.deepEqual([...new Set(order.map(v => v.cluster))], ['Tech & AI'],
+      'both videos must land in one group, spelled as the taxonomy spells it');
+  });
+
+  it('folds surrounding whitespace onto the taxonomy spelling', () => {
+    const order = buildSortOrder([video({ id: 'a' })], {
+      clusters: [{ name: '  Music  ', videoIds: ['a'] }],
+    }, []);
+    assert.equal(order[0].cluster, 'Music');
+  });
+
+  it('folds model-invented names onto the spelling that arrived first', () => {
+    // No canonical spelling exists for these, so first-seen wins. What matters
+    // is that they do not fragment.
+    const videos = [video({ id: 'a' }), video({ id: 'b' })];
+    const order = buildSortOrder(videos, {
+      clusters: [
+        { name: 'Knitting', videoIds: ['a'] },
+        { name: 'KNITTING', videoIds: ['b'] },
+      ],
+    }, []);
+
+    assert.deepEqual([...new Set(order.map(v => v.cluster))], ['Knitting']);
+  });
+
+  it('still separates genuinely different categories', () => {
+    // Guard against the folding being too aggressive.
+    const videos = [video({ id: 'a' }), video({ id: 'b' })];
+    const order = buildSortOrder(videos, {
+      clusters: [
+        { name: 'Music', videoIds: ['a'] },
+        { name: 'Tech & AI', videoIds: ['b'] },
+      ],
+    }, []);
+
+    assert.equal(new Set(order.map(v => v.cluster)).size, 2);
+  });
+
+  it('sorts a case-folded taxonomy group into its taxonomy position, not after it', () => {
+    // Ordering keys off TAXONOMY.includes(name), so an unfolded "music" would
+    // have been treated as invented and sorted after every real category.
+    const videos = [video({ id: 'tech' }), video({ id: 'music' })];
+    const order = buildSortOrder(videos, {
+      clusters: [
+        { name: 'Tech & AI', videoIds: ['tech'] },
+        { name: 'music', videoIds: ['music'] },
+      ],
+    }, []);
+
+    assert.deepEqual(order.map(v => v.id), ['music', 'tech'],
+      'Music precedes Tech & AI in the taxonomy');
+  });
+});
