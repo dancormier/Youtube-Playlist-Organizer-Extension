@@ -226,10 +226,27 @@ function onPlaylistPage() {
 
 const WL_LOG = '[WL]';
 
+// Tracks whether the previous syncTrigger call found us on a playlist page,
+// so the observer path (see below) can tell a steady state from a transition.
+// `undefined` initially guarantees the very first call always looks like a
+// transition and gets logged.
+let lastOnPlaylistPage;
+
 /**
  * The trigger is a fixed-position element we own, so there is no YouTube
  * selector to wait for and nothing to retry — mount it whenever we are on a
  * playlist page, remove it when we are not.
+ *
+ * The MutationObserver fires continuously for the life of a YouTube tab, on
+ * every page, so logging unconditionally here would drown the one-shot paths
+ * (load-time, navigation events, the backstop) under a wall of identical
+ * "observer" lines — and calling WLModal.verifyTrigger() on every one of
+ * those would mean a forced-layout getComputedStyle() read on every DOM
+ * mutation while parked on a playlist page. So `source === 'observer'` calls
+ * only log when something actually happened: the trigger was (re)created, or
+ * the on-playlist-page/not-on-playlist-page state changed since the last
+ * call. Everything else (the one-shot event sources, and every console.warn)
+ * still logs unconditionally. Do not "fix" this back to logging every call.
  */
 function syncTrigger(source) {
   let onPage;
@@ -240,8 +257,14 @@ function syncTrigger(source) {
     return;
   }
 
+  const stateChanged = onPage !== lastOnPlaylistPage;
+  lastOnPlaylistPage = onPage;
+  const noteworthy = source !== 'observer' || stateChanged;
+
   if (!onPage) {
-    console.info(WL_LOG, 'syncTrigger: not a playlist page', { source, href: location.href });
+    if (noteworthy) {
+      console.info(WL_LOG, 'syncTrigger: not a playlist page', { source, href: location.href });
+    }
     WLModal.removeTrigger();
     WLModal.close();
     WLHeadings.stop();
@@ -249,17 +272,21 @@ function syncTrigger(source) {
     return;
   }
 
+  let created;
   try {
-    const created = WLModal.mountTrigger({ onOpen: () => WLPanel.openModal() });
+    created = WLModal.mountTrigger({ onOpen: () => WLPanel.openModal() });
+  } catch (err) {
+    console.warn(WL_LOG, 'mountTrigger threw', { source }, err);
+    return;
+  }
+
+  if (noteworthy || created) {
     console.info(WL_LOG, 'syncTrigger: playlist page', {
       source,
       href: location.href,
       created,
       state: WLModal.verifyTrigger(),
     });
-  } catch (err) {
-    console.warn(WL_LOG, 'mountTrigger threw', { source }, err);
-    return;
   }
 
   WLPanel.restoreHeadings();
@@ -326,7 +353,7 @@ const backstopTimer = setInterval(() => {
   backstopTicks++;
 
   if (!onPlaylistPage()) {
-    if (backstopTicks > 40) clearInterval(backstopTimer);
+    if (backstopTicks >= 40) clearInterval(backstopTimer);
     return;
   }
 
@@ -338,5 +365,5 @@ const backstopTimer = setInterval(() => {
     syncTrigger('backstop');
   }
 
-  if (backstopTicks > 40) clearInterval(backstopTimer);
+  if (backstopTicks >= 40) clearInterval(backstopTimer);
 }, 500);
