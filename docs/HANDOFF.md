@@ -103,7 +103,21 @@ background/
 
 ---
 
-## OPEN ISSUE 1 — trigger doesn't mount on page load (highest priority)
+## ~~OPEN ISSUE 1~~ — RESOLVED 2026-07-27
+
+**Confirmed by Dan:** granting **Always Allow on www.youtube.com** in Firefox's extensions menu makes the trigger mount normally on a fresh tab. The permissions theory below was correct. This was never an extension bug.
+
+**What was done:**
+
+- `popup/popup.{html,js,css}` — on open, the popup calls `permissions.contains({origins:['https://www.youtube.com/*']})`. If not granted, it shows a banner with a **Grant access to YouTube** button that calls `permissions.request()`. On success the banner becomes "Granted. Reload any open YouTube tabs." — the grant does *not* retro-inject into already-open tabs. Chrome grants `host_permissions` at install, so `contains()` returns true there and the banner never renders.
+- `content/panel.js` — the 20s polling backstop was **removed**. It was diagnostic scaffolding for a cause that turned out to be elsewhere, and its secondary job (remount if the trigger is removed) is already covered by `pageObserver`.
+
+**The popup rewrite is off the table.** Dan's fallback plan — moving all functionality into the toolbar popup — is no longer needed and should not be started.
+
+**Not done, deliberately:** `scripting.registerContentScripts()` after the grant, which would inject into already-open tabs without a reload. More moving parts for a one-time-ever event. Revisit only if the reload step proves annoying.
+
+<details>
+<summary>Original diagnosis, kept for the record</summary>
 
 **Symptom:** on a fresh Firefox tab opened after loading the extension, navigating straight to a playlist URL, the Organize button does not appear. Clicking the browser toolbar button makes it appear.
 
@@ -127,6 +141,8 @@ Nothing logs until the click. Then the script loads and mounts correctly **on it
 **Dan's proposed fallback, if it can't be fixed:** move all functionality into the toolbar popup — the popup becomes the whole UI (mode choice, preview, apply), so clicking the button is what starts everything. He has explicitly said he's fine with this, including headings only appearing after a click. **Do not start this without confirming the permissions test failed** — it's a large rewrite to work around what may be one toggle.
 
 **Note:** the current build has a **bounded 20s backstop** that mounts the trigger if the normal event paths don't fire, and `console.warn`s when it acts. It is diagnostic scaffolding. Once the root cause is settled, decide whether to keep or remove it.
+
+</details>
 
 ---
 
@@ -157,11 +173,15 @@ One-line change in `styles/headings.css`. **Deliberately not done at handoff** �
 
 ---
 
-## OPEN ISSUE 4 — ghost detection is an unverified assumption
+## ~~OPEN ISSUE 4~~ — RESOLVED 2026-07-27
 
-`content/playlist.js` infers `unavailable` from a **falsy title**, which assumes YouTube returns `{simpleText}` rather than `{runs:[]}` for deleted/private entries. If that's wrong, ghosts get sent to Claude, get a 404 on their `player` call, and land in a topic group instead of the trailing `Unavailable` group.
+`content/playlist.js` inferred `unavailable` from a **falsy title** alone, assuming YouTube returns `{simpleText}` rather than `{runs:[]}` for deleted/private entries. Unverified assumption; if wrong, ghosts get sent to Claude, 404 on their `player` call, and land in a topic group instead of the trailing `Unavailable` group.
 
-`playlistVideoRenderer` exposes **`isPlayable: false`** directly. Switch to it if a playlist with a deleted video misbehaves. Dan tested a playlist and it "seemed fine", but it's unclear whether it contained ghosts.
+**Fixed:** `normalize()` now treats an entry as unavailable when `renderer.isPlayable === false` **or** the title is falsy. Both signals are kept on purpose — `isPlayable` is YouTube's explicit marker but is omitted from many normal entries, so the check must be strict `=== false` and cannot stand alone; the falsy-title check remains the fallback.
+
+Four tests in `tests/playlist.test.js` cover the matrix (`isPlayable:false` + real title, falsy title + field absent, `isPlayable:true` + normal title, field absent + normal title). The last two assert the field really is absent from the fixture first, so a later edit to the shared fixture can't silently gut the case they exist to catch.
+
+**Still unverified against a real ghost.** The logic is now correct for both response shapes, but no playlist containing a known deleted video has been run through it.
 
 ---
 
