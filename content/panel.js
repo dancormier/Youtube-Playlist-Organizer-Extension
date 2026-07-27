@@ -342,28 +342,9 @@ window.addEventListener('load', () => onPageChange('load'));
 
 onPageChange('load-time');
 
-/**
- * Backstop: poll briefly in case none of the event paths fire, or something
- * removes the trigger just after we mount it. mountTrigger is idempotent, so a
- * redundant pass costs a querySelector. Logs loudly if this is what saved us —
- * that would mean an event path is not working and is worth knowing about.
- */
-let backstopTicks = 0;
-const backstopTimer = setInterval(() => {
-  backstopTicks++;
-
-  if (!onPlaylistPage()) {
-    if (backstopTicks >= 40) clearInterval(backstopTimer);
-    return;
-  }
-
-  if (!document.querySelector('#wl-trigger')) {
-    console.warn(WL_LOG, 'backstop mounting trigger — an event path did not fire', {
-      tick: backstopTicks,
-      href: location.href,
-    });
-    syncTrigger('backstop');
-  }
-
-  if (backstopTicks >= 40) clearInterval(backstopTimer);
-}, 500);
+// A 20s polling backstop used to live here. It was diagnostic scaffolding for
+// "the trigger never mounts on page load", whose root cause turned out to be
+// Firefox MV3 host permissions being opt-in — not a missed event path. Its
+// secondary job (remount if something removes the trigger) is already covered
+// by pageObserver, which fires on any mutation and calls syncTrigger. Removed
+// 2026-07-27; see docs/HANDOFF.md.
