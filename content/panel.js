@@ -122,7 +122,10 @@ const WLPanel = {
     const playlistId = this.currentPlaylistId;
     const orderedSetVideoIds = this.currentSortOrder.map(v => v.setVideoId);
 
-    WLModal.showBusy(`Applying ${orderedSetVideoIds.length} moves...`);
+    // Uninterruptible from here: applyOrder() sends the reorder immediately, so
+    // "cancelling" would only hide the modal and skip the reload while the
+    // playlist changed underneath.
+    WLModal.showBusy(`Applying ${orderedSetVideoIds.length} moves...`, { cancellable: false });
 
     let result;
     try {
@@ -170,7 +173,7 @@ const WLPanel = {
       // "Sort complete" and reload the page the user already left.
       if (runId !== this._runId) return;
 
-      WLModal.showBusy(`Sort complete in ${(result.waitedMs / 1000).toFixed(1)}s. Refreshing...`);
+      WLModal.showBusy(`Sort complete in ${(result.waitedMs / 1000).toFixed(1)}s. Refreshing...`, { cancellable: false });
       // YouTube's DOM does not reflect the reordered playlist, so a successful
       // sort otherwise looks like nothing happened. Re-check ownership inside
       // the callback itself, not just when scheduling it — the 1.2s window is
