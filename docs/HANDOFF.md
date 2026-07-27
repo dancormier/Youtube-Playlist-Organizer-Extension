@@ -1,10 +1,10 @@
 # Handoff — YouTube Watch Later Organizer
 
-**Written:** 2026-07-27
-**Branch:** `dcormier/innertube-rewrite` (48+ commits, **unpushed**, no remote configured)
-**Version:** 0.6.0 · **Tests:** 172 passing · **Working tree:** clean
+**Written:** 2026-07-27 · **Last updated:** 2026-07-27
+**Remote:** [github.com/dancormier/youtube-wl-organizer](https://github.com/dancormier/youtube-wl-organizer) — private, default branch `main`
+**Version:** 0.6.0 · **Tests:** 185 passing · **Working tree:** clean
 
-Read this before touching anything. It covers what the extension does, what was measured rather than assumed, what is decided and why, and exactly what is still open.
+**All four original issues are closed and verified in Firefox by Dan**, along with one found afterwards (stale headings after re-sorting). Read this before touching anything: it covers what the extension does, what was measured rather than assumed, and what is decided and why.
 
 ---
 
@@ -184,7 +184,7 @@ Headings now align with the video thumbnails via `left: 36px` on `.wl-playlist-h
 
 Four tests in `tests/playlist.test.js` cover the matrix (`isPlayable:false` + real title, falsy title + field absent, `isPlayable:true` + normal title, field absent + normal title). The last two assert the field really is absent from the fixture first, so a later edit to the shared fixture can't silently gut the case they exist to catch.
 
-**Still unverified against a real ghost.** The logic is now correct for both response shapes, but no playlist containing a known deleted video has been run through it.
+**Verified 2026-07-27** by Dan against a playlist containing a real unavailable video.
 
 ---
 
