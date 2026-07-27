@@ -224,21 +224,45 @@ function onPlaylistPage() {
          Boolean(new URL(location.href).searchParams.get('list'));
 }
 
+const WL_LOG = '[WL]';
+
 /**
  * The trigger is a fixed-position element we own, so there is no YouTube
  * selector to wait for and nothing to retry — mount it whenever we are on a
  * playlist page, remove it when we are not.
  */
-function syncTrigger() {
-  if (onPlaylistPage()) {
-    WLModal.mountTrigger({ onOpen: () => WLPanel.openModal() });
-    WLPanel.restoreHeadings();
-  } else {
+function syncTrigger(source) {
+  let onPage;
+  try {
+    onPage = onPlaylistPage();
+  } catch (err) {
+    console.warn(WL_LOG, 'onPlaylistPage threw', { source, href: location.href }, err);
+    return;
+  }
+
+  if (!onPage) {
+    console.info(WL_LOG, 'syncTrigger: not a playlist page', { source, href: location.href });
     WLModal.removeTrigger();
     WLModal.close();
     WLHeadings.stop();
     WLHeadings.clear();
+    return;
   }
+
+  try {
+    const created = WLModal.mountTrigger({ onOpen: () => WLPanel.openModal() });
+    console.info(WL_LOG, 'syncTrigger: playlist page', {
+      source,
+      href: location.href,
+      created,
+      state: WLModal.verifyTrigger(),
+    });
+  } catch (err) {
+    console.warn(WL_LOG, 'mountTrigger threw', { source }, err);
+    return;
+  }
+
+  WLPanel.restoreHeadings();
 }
 
 function resetForNavigation() {
@@ -254,22 +278,65 @@ function resetForNavigation() {
 
 let lastUrl = location.href;
 
-const pageObserver = new MutationObserver(() => {
+console.info(WL_LOG, 'content script loaded', {
+  href: location.href,
+  readyState: document.readyState,
+  hasBody: Boolean(document.body),
+});
+
+function onPageChange(source) {
   if (location.href !== lastUrl) {
     lastUrl = location.href;
     resetForNavigation();
   }
-  syncTrigger();
-});
+  syncTrigger(source);
+}
 
-pageObserver.observe(document.body, { childList: true, subtree: true });
+const pageObserver = new MutationObserver(() => onPageChange('observer'));
 
-window.addEventListener('yt-navigate-finish', () => {
-  if (location.href !== lastUrl) {
-    lastUrl = location.href;
-    resetForNavigation();
+try {
+  pageObserver.observe(document.body, { childList: true, subtree: true });
+} catch (err) {
+  // H1: no body yet. Retry once the document is ready rather than dying here.
+  console.warn(WL_LOG, 'observer attach failed; will retry on DOMContentLoaded', err);
+  document.addEventListener('DOMContentLoaded', () => {
+    try {
+      pageObserver.observe(document.body, { childList: true, subtree: true });
+      console.info(WL_LOG, 'observer attached on DOMContentLoaded');
+    } catch (retryErr) {
+      console.warn(WL_LOG, 'observer attach failed again', retryErr);
+    }
+  });
+}
+
+window.addEventListener('yt-navigate-finish', () => onPageChange('yt-navigate-finish'));
+document.addEventListener('DOMContentLoaded', () => onPageChange('DOMContentLoaded'));
+window.addEventListener('load', () => onPageChange('load'));
+
+onPageChange('load-time');
+
+/**
+ * Backstop: poll briefly in case none of the event paths fire, or something
+ * removes the trigger just after we mount it. mountTrigger is idempotent, so a
+ * redundant pass costs a querySelector. Logs loudly if this is what saved us —
+ * that would mean an event path is not working and is worth knowing about.
+ */
+let backstopTicks = 0;
+const backstopTimer = setInterval(() => {
+  backstopTicks++;
+
+  if (!onPlaylistPage()) {
+    if (backstopTicks > 40) clearInterval(backstopTimer);
+    return;
   }
-  syncTrigger();
-});
 
-syncTrigger();
+  if (!document.querySelector('#wl-trigger')) {
+    console.warn(WL_LOG, 'backstop mounting trigger — an event path did not fire', {
+      tick: backstopTicks,
+      href: location.href,
+    });
+    syncTrigger('backstop');
+  }
+
+  if (backstopTicks > 40) clearInterval(backstopTimer);
+}, 500);

@@ -55,9 +55,12 @@ const WLModal = {
 
   // ── Trigger ────────────────────────────────────────────────────────────
 
-  /** Idempotent: safe to call on every navigation. */
+  /**
+   * Idempotent: safe to call on every navigation.
+   * @returns {boolean} true when it created the element, false when one already existed.
+   */
   mountTrigger({ onOpen }) {
-    if (document.querySelector('#wl-trigger')) return;
+    if (document.querySelector('#wl-trigger')) return false;
 
     const button = document.createElement('button');
     button.id = 'wl-trigger';
@@ -68,10 +71,26 @@ const WLModal = {
     button.addEventListener('click', () => onOpen());
 
     document.body.appendChild(button);
+    return true;
   },
 
   removeTrigger() {
     document.querySelector('#wl-trigger')?.remove();
+  },
+
+  /** Diagnostic: is the trigger present, and did our stylesheet actually apply? */
+  verifyTrigger() {
+    const el = document.querySelector('#wl-trigger');
+    if (!el) return { present: false };
+
+    const style = typeof getComputedStyle === 'function' ? getComputedStyle(el) : null;
+    return {
+      present: true,
+      connected: el.isConnected,
+      position: style ? style.position : 'unknown',
+      zIndex: style ? style.zIndex : 'unknown',
+      visible: style ? style.display !== 'none' && style.visibility !== 'hidden' : 'unknown',
+    };
   },
 
   // ── Modal shell ────────────────────────────────────────────────────────

@@ -18,8 +18,10 @@ const locationStub = {
 
 const documentStub = {
   body: {},
+  readyState: 'loading',
   querySelector: () => null,
   createElement: () => ({}),
+  addEventListener: () => {},
 };
 
 class MutationObserverStub {
@@ -33,9 +35,12 @@ function loadPanel(sandbox = {}) {
     location: locationStub,
     MutationObserver: MutationObserverStub,
     window: { addEventListener: () => {} },
+    setInterval: () => 0,
+    clearInterval: () => {},
     WLModal: {
       mountTrigger() {},
       removeTrigger() {},
+      verifyTrigger() { return { present: false }; },
       close() {},
       open() {},
       showBusy() {},
@@ -96,6 +101,7 @@ function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, toggleOve
     WLModal: {
       mountTrigger() {},
       removeTrigger() {},
+      verifyTrigger() { return { present: false }; },
       close() {},
       open() {},
       showBusy(text) { modalCalls.showBusy.push(text); },
@@ -750,5 +756,33 @@ describe('toggleUnwatched', () => {
     await assert.doesNotReject(() => WLPanel.toggleUnwatched('v1'));
 
     assert.deepEqual(modalCalls.showError, ['Extension context invalidated']);
+  });
+});
+
+/**
+ * Minimal document stub for loading content/modal.js directly — same shape as
+ * documentStub above (body/createElement/querySelector), just stateful enough
+ * to let #wl-trigger's presence flip after mountTrigger appends it.
+ */
+function makeTriggerDocument() {
+  let mounted = null;
+  return {
+    body: { appendChild: (el) => { mounted = el; } },
+    createElement: () => ({ setAttribute() {}, addEventListener() {} }),
+    querySelector: (selector) => (selector === '#wl-trigger' ? mounted : null),
+  };
+}
+
+describe('mountTrigger return value', () => {
+  it('reports true when it creates the trigger and false when one exists', () => {
+    const created = [];
+    const doc = makeTriggerDocument();
+    const modal = loadGlobal('content/modal.js', 'WLModal', {
+      document: doc,
+      getComputedStyle: () => ({ position: 'fixed', zIndex: '1', display: 'block', visibility: 'visible' }),
+    });
+
+    assert.equal(modal.mountTrigger({ onOpen: () => created.push(1) }), true);
+    assert.equal(modal.mountTrigger({ onOpen: () => created.push(1) }), false, 'second call must not create a duplicate');
   });
 });
