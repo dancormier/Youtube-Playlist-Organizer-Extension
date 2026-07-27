@@ -26,10 +26,36 @@ npm install
 
 That produces `dist/firefox/`, `dist/chrome/`, and an unsigned `dist/youtube-playlist-organizer.xpi`.
 
-### Firefox
+### Firefox — permanent install (signed)
+
+Release Firefox only installs add-ons Mozilla has signed. Signing on the
+**unlisted** channel gets a signed `.xpi` without publishing it publicly.
+
+```sh
+./sign.sh
+```
+
+Credentials are read from 1Password automatically; override with
+`AMO_JWT_ISSUER` / `AMO_JWT_SECRET` if needed. The signed `.xpi` lands in
+`dist/`. Install it via `about:addons` → gear icon → **Install Add-on From
+File…**.
+
+Two rules that matter:
+
+- **Bump `version` in `package.json` before re-signing.** AMO rejects a version
+  it has already seen.
+- **Never change the gecko id** in `manifest.firefox.json`. Firefox treats a
+  different id as an entirely different add-on.
+
+Self-distributed add-ons do not auto-update — a new version means signing and
+installing again.
+
+### Firefox — temporary install (development)
 
 1. Open `about:debugging#/runtime/this-firefox`
 2. **Load Temporary Add-on…** and pick any file inside `dist/firefox/`
+
+This is wiped every time Firefox restarts.
 
 **You must grant access to YouTube.** Firefox MV3 treats declared `host_permissions` as opt-in, so the content script does not inject until you allow the site — the Organize button simply never appears otherwise. Either:
 
