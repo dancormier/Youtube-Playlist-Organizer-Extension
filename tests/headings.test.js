@@ -290,6 +290,34 @@ describe('WLHeadings.clear', () => {
   });
 });
 
+describe('WLHeadings.present', () => {
+  // Drives whether the modal offers its "Hide group headings" control, so it
+  // has to track the real lifecycle rather than any stored intent.
+  const loadWith = (document) => loadGlobal('content/headings.js', 'WLHeadings', {
+    document, SELECTORS, MutationObserver: class { observe() {} disconnect() {} },
+  });
+
+  it('is false before anything is injected', () => {
+    const { document } = fakePlaylist(['a', 'b']);
+    assert.equal(loadWith(document).present(), false);
+  });
+
+  it('is true once headings are injected', () => {
+    const { document } = fakePlaylist(['a', 'b']);
+    const headings = loadWith(document);
+    headings.inject(headings.boundariesFrom([video({ id: 'a', cluster: 'Music' })]));
+    assert.equal(headings.present(), true);
+  });
+
+  it('is false again after clear()', () => {
+    const { document } = fakePlaylist(['a', 'b']);
+    const headings = loadWith(document);
+    headings.inject(headings.boundariesFrom([video({ id: 'a', cluster: 'Music' })]));
+    headings.clear();
+    assert.equal(headings.present(), false);
+  });
+});
+
 describe('WLHeadings.watch', () => {
   /** setTimeout/clearTimeout stand-in that never fires on its own — the test
    *  decides when the debounced callback runs via flush(), so nothing here

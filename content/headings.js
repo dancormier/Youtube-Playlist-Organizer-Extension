@@ -31,6 +31,11 @@ const WLHeadings = {
     return boundaries;
   },
 
+  /** True when any of our headings are currently in the page. */
+  present() {
+    return document.querySelectorAll(`[${this.ATTRIBUTE}]`).length > 0;
+  },
+
   /** Order-independent fingerprint of the video set. */
   hashIds(videos) {
     return videos.map(v => v.id).sort().join(',');

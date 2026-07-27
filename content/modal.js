@@ -190,6 +190,28 @@ const WLModal = {
     wrap.append(ai, duration);
     body.appendChild(wrap);
 
+    // Only offered when there is something to hide. WLHeadings loads after this
+    // file, but this runs at click time, long after every content script is in.
+    if (WLHeadings.present()) {
+      const hide = document.createElement('button');
+      hide.className = 'wl-modal-btn';
+      hide.type = 'button';
+      hide.textContent = 'Hide group headings';
+      hide.addEventListener('click', () => this._handlers.onHideHeadings?.());
+      footer.appendChild(hide);
+
+      // TEMPORARY — diagnostic for "headings break drag-and-drop". Stops the
+      // observer without removing the headings, to tell apart the two possible
+      // causes: heading nodes polluting the sibling chain Polymer indexes, vs
+      // the observer re-injecting them mid-drag. Delete once that is settled.
+      const freeze = document.createElement('button');
+      freeze.className = 'wl-modal-btn';
+      freeze.type = 'button';
+      freeze.textContent = 'Freeze headings (debug)';
+      freeze.addEventListener('click', () => this._handlers.onFreezeHeadings?.());
+      footer.appendChild(freeze);
+    }
+
     const cancel = document.createElement('button');
     cancel.className = 'wl-modal-btn';
     cancel.type = 'button';

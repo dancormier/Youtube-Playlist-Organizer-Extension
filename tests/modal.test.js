@@ -77,6 +77,70 @@ describe('WLModal.metaFor', () => {
 });
 
 /**
+ * Minimal element/document fake, just enough for showModes(). open() builds the
+ * modal shell with innerHTML, which is not worth faking, so these tests stub
+ * _body()/_footer() directly and call showModes() on its own.
+ */
+function fakeUi() {
+  const make = (tag) => ({
+    tagName: tag, className: '', type: '', innerHTML: '', textContent: '',
+    children: [],
+    _listeners: {},
+    addEventListener(ev, fn) { this._listeners[ev] = fn; },
+    append(...nodes) { this.children.push(...nodes); },
+    appendChild(node) { this.children.push(node); },
+    focus() {},
+  });
+  return { make, document: { createElement: make } };
+}
+
+function showModesWith({ present, handlers = {} }) {
+  const { make, document } = fakeUi();
+  const modal = loadGlobal('content/modal.js', 'WLModal', {
+    document,
+    WLHeadings: { present: () => present },
+  });
+  const body = make('div');
+  const footer = make('div');
+  modal._body = () => body;
+  modal._footer = () => footer;
+  modal._handlers = handlers;
+  modal.showModes();
+  return { footer, labels: footer.children.map(el => el.textContent) };
+}
+
+describe('WLModal.showModes', () => {
+  it('offers no heading controls when no headings are present', () => {
+    const { labels } = showModesWith({ present: false });
+    assert.deepEqual([...labels], ['Close']);
+  });
+
+  it('offers the heading controls when headings are present', () => {
+    const { labels } = showModesWith({ present: true });
+    assert.deepEqual([...labels], ['Hide group headings', 'Freeze headings (debug)', 'Close']);
+  });
+
+  it('wires the hide button to onHideHeadings', () => {
+    let called = false;
+    const { footer } = showModesWith({
+      present: true,
+      handlers: { onHideHeadings: () => { called = true; } },
+    });
+    footer.children.find(el => el.textContent === 'Hide group headings')._listeners.click();
+    assert.equal(called, true);
+  });
+
+  it('does not throw when showModes runs with no handlers registered', () => {
+    // Every handler call site uses ?., and the buttons are reachable before
+    // open() has wired anything in the tests above.
+    const { footer } = showModesWith({ present: true });
+    assert.doesNotThrow(() => {
+      footer.children.find(el => el.textContent === 'Hide group headings')._listeners.click();
+    });
+  });
+});
+
+/**
  * Minimal document stub covering only what mountTrigger/removeTrigger/close
  * touch. The rest of WLModal's DOM-rendering methods need far more of the
  * DOM API (innerHTML parsing, event delegation) than is worth faking without
