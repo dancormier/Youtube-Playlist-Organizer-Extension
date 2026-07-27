@@ -1,10 +1,27 @@
 /* styles/headings.css — group dividers injected into the playlist */
 
+/* Each heading is a child of the item that starts its group, NOT a sibling —
+   a foreign sibling in the sortable container breaks YouTube's drag-to-reorder
+   (see the comment on WLHeadings.inject). The item opens a gap with margin-top
+   and the heading is absolutely positioned into it, so the heading stays out of
+   flow and cannot disturb the item's internal #index-container/#content/#menu
+   flex row. The item is `position: static` by default, hence `relative` here. */
+.wl-group-anchor {
+  position: relative;
+  margin-top: 44px;
+  overflow: visible;
+}
+
 .wl-playlist-heading {
+  position: absolute;
+  top: -40px;
+  /* Aligns the heading with the video thumbnails below it. */
+  left: 36px;
+  right: 0;
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 20px 0 8px;
+  margin: 0;
   padding: 0 0 6px;
   border-bottom: 1px solid #3f3f3f;
   font-family: 'Roboto', 'Arial', sans-serif;

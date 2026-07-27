@@ -4,6 +4,7 @@
 const WLHeadings = {
   IN_PROGRESS_LABEL: '▶ In Progress',
   ATTRIBUTE: 'data-wl-heading',
+  ANCHOR_CLASS: 'wl-group-anchor',
 
   _observer: null,
   _boundaries: [],
@@ -78,11 +79,23 @@ const WLHeadings = {
   },
 
   /**
-   * Insert a heading before the first item of each group.
+   * Put each group's heading INSIDE that group's first item, never beside it.
+   *
+   * Headings used to be siblings of ytd-playlist-video-renderer inside
+   * DIV#contents. That broke YouTube's drag-to-reorder: handleDragMove_ caches
+   * one rect per child of the sortable container and indexes it by child
+   * position, so a foreign sibling made an index resolve to undefined and threw
+   * `can't access property "top"` on every mousemove. Measured 2026-07-27.
+   * Polymer also wiped the foreign siblings on its own re-render mid-drag.
+   *
+   * The renderer has no shadow root, so a light-DOM child renders normally. It
+   * is absolutely positioned into a margin-top gap on the anchor item (see
+   * styles/headings.css), which keeps it out of the item's internal flex row.
+   *
    * Idempotent by identity, not position — if a group's heading already exists
    * anywhere in the list it is moved into place rather than duplicated, so this
-   * self-heals if something lands between a heading and its anchor item, and can
-   * be re-run freely as YouTube appends more items.
+   * self-heals after a re-render and can be re-run freely as YouTube appends
+   * more items. appendChild() moves an existing node rather than copying it.
    */
   inject(boundaries) {
     let placed = 0;
@@ -92,15 +105,9 @@ const WLHeadings = {
       if (!item) continue;
 
       const existing = this._headingFor(name);
-      if (existing) {
-        if (item.previousElementSibling !== existing) {
-          item.parentNode.insertBefore(existing, item);
-        }
-        placed++;
-        continue;
-      }
-
-      item.parentNode.insertBefore(this._build(name, count || 0), item);
+      const heading = existing || this._build(name, count || 0);
+      if (heading.parentNode !== item) item.appendChild(heading);
+      item.classList.add(this.ANCHOR_CLASS);
       placed++;
     }
     return placed;
@@ -120,6 +127,12 @@ const WLHeadings = {
 
     for (const heading of document.querySelectorAll(`[${this.ATTRIBUTE}]`)) {
       heading.remove();
+    }
+    // The anchor class carries the margin-top that opened the gap for the
+    // heading. Leaving it behind would strand that gap on an item with nothing
+    // in it — visible as a blank band in the list.
+    for (const item of document.querySelectorAll(`.${this.ANCHOR_CLASS}`)) {
+      item.classList.remove(this.ANCHOR_CLASS);
     }
   },
 

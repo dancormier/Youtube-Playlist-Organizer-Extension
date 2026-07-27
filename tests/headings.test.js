@@ -129,27 +129,20 @@ describe('WLHeadings.hashIds', () => {
  * Minimal fake `ytd-playlist-video-renderer` list, faithful enough to exercise
  * inject()/clear()/watch() without a real DOM: a `container` node holding
  * "item" elements (matched by SELECTORS.PLAYLIST_ITEMS) each with a video-link
- * child (matched by SELECTORS.VIDEO_LINK), plus insertBefore()/remove() that
- * keep previousElementSibling links honest — that's the one relationship
- * inject()'s idempotency check depends on.
+ * child (matched by SELECTORS.VIDEO_LINK).
+ *
+ * Headings now live INSIDE their anchor item, not beside it, so this models a
+ * real tree: appendChild() detaches from the previous parent first (the real
+ * DOM moves a node rather than copying it, which inject()'s drift repair
+ * depends on), remove() unhooks from whatever parent currently holds the node,
+ * and querySelectorAll walks the whole tree rather than just the top level.
+ *
+ * `previousElementSibling` is still maintained for the items themselves. Nothing
+ * in headings.js reads it any more, but a stray-sibling test asserts against it
+ * to prove headings stay out of the container's child list.
  */
 function fakePlaylist(videoIds) {
   const container = { nodeType: 1, children: [] };
-
-  const makeItem = (id) => ({
-    nodeType: 1,
-    _isItem: true,
-    parentNode: container,
-    previousElementSibling: null,
-    // Delimited with non-letter characters only, so a short test id like 'a' or
-    // 'c' can never accidentally substring-match inside another item's href
-    // (a literal "/watch?v=" would — "watch" itself contains both letters).
-    querySelector: (sel) => (sel === SELECTORS.VIDEO_LINK
-      ? { getAttribute: (a) => (a === 'href' ? `#${id}#` : null) }
-      : null),
-    getAttribute: () => null,
-    hasAttribute: () => false,
-  });
 
   const relink = () => {
     container.children.forEach((el, i) => {
@@ -157,14 +150,54 @@ function fakePlaylist(videoIds) {
     });
   };
 
-  container.insertBefore = (node, ref) => {
-    // Real DOM insertBefore() moves a node already in the tree rather than
-    // duplicating it — remove any prior placement first so this fixture
-    // matches that, which inject()'s drift-repair (moving an existing
-    // heading back into place) depends on.
-    const existingIndex = container.children.indexOf(node);
-    if (existingIndex !== -1) container.children.splice(existingIndex, 1);
+  const detach = (node) => {
+    const parent = node.parentNode;
+    if (!parent) return;
+    const i = parent.children.indexOf(node);
+    if (i !== -1) parent.children.splice(i, 1);
+    node.parentNode = null;
+    if (parent === container) relink();
+  };
 
+  const classListFor = (el) => ({
+    add(name) { if (!el._classes.includes(name)) el._classes.push(name); },
+    remove(name) {
+      const i = el._classes.indexOf(name);
+      if (i !== -1) el._classes.splice(i, 1);
+    },
+    contains(name) { return el._classes.includes(name); },
+  });
+
+  const attach = (parent, child) => {
+    detach(child);
+    parent.children.push(child);
+    child.parentNode = parent;
+  };
+
+  const makeItem = (id) => {
+    const el = {
+      nodeType: 1,
+      _isItem: true,
+      _classes: [],
+      parentNode: container,
+      previousElementSibling: null,
+      children: [],
+      // Delimited with non-letter characters only, so a short test id like 'a' or
+      // 'c' can never accidentally substring-match inside another item's href
+      // (a literal "/watch?v=" would — "watch" itself contains both letters).
+      querySelector: (sel) => (sel === SELECTORS.VIDEO_LINK
+        ? { getAttribute: (a) => (a === 'href' ? `#${id}#` : null) }
+        : null),
+      getAttribute: () => null,
+      hasAttribute: () => false,
+      appendChild(child) { attach(el, child); },
+    };
+    el.classList = classListFor(el);
+    return el;
+  };
+
+  container.insertBefore = (node, ref) => {
+    detach(node);
     const i = container.children.indexOf(ref);
     container.children.splice(i === -1 ? container.children.length : i, 0, node);
     node.parentNode = container;
@@ -174,26 +207,34 @@ function fakePlaylist(videoIds) {
   container.children = videoIds.map(makeItem);
   relink();
 
+  /** Every element in the tree, at any depth. */
+  const walk = (node, out = []) => {
+    for (const child of node.children || []) {
+      out.push(child);
+      walk(child, out);
+    }
+    return out;
+  };
+
   const document = {
     createElement: (tag) => {
       const el = {
-        tagName: tag, nodeType: 1, className: '', _attrs: {},
+        tagName: tag, nodeType: 1, className: '', _attrs: {}, _classes: [],
+        parentNode: null,
         children: [],
         setAttribute(k, v) { this._attrs[k] = v; },
         getAttribute(k) { return k in this._attrs ? this._attrs[k] : null; },
         hasAttribute(k) { return k in this._attrs; },
-        appendChild(child) { this.children.push(child); },
-        remove() {
-          const i = container.children.indexOf(el);
-          if (i !== -1) container.children.splice(i, 1);
-          relink();
-        },
+        appendChild(child) { attach(el, child); },
+        remove() { detach(el); },
       };
+      el.classList = classListFor(el);
       return el;
     },
     querySelectorAll: (sel) => {
       if (sel === SELECTORS.PLAYLIST_ITEMS) return container.children.filter(el => el._isItem);
-      if (sel === '[data-wl-heading]') return container.children.filter(el => el.hasAttribute?.('data-wl-heading'));
+      if (sel === '[data-wl-heading]') return walk(container).filter(el => el.hasAttribute?.('data-wl-heading'));
+      if (sel === '.wl-group-anchor') return walk(container).filter(el => el.classList?.contains('wl-group-anchor'));
       return [];
     },
     querySelector: (sel) => (sel === SELECTORS.PLAYLIST_ITEMS
@@ -209,12 +250,28 @@ function fakePlaylist(videoIds) {
     container,
     /** Simulate YouTube lazily appending another item as the user scrolls. */
     addItem(id) { container.insertBefore(makeItem(id), null); },
+    /** Headings anywhere in the tree. */
+    allHeadings: () => walk(container).filter(el => el.tagName === 'h2'),
+    /** The heading held by the item at `index`, or null. */
+    headingIn: (index) =>
+      container.children[index]?.children.find(el => el.tagName === 'h2') ?? null,
+    /**
+     * Guard for the bug this whole design exists to avoid: a non-item child of
+     * the sortable container makes YouTube's handleDragMove_ index into a rect
+     * cache that has no entry there, throwing on every mousemove.
+     */
+    assertChildListIsPureItems: () => {
+      assert.ok(
+        container.children.every(el => el._isItem),
+        'the sortable container must hold only playlist items — a foreign sibling breaks drag-and-drop',
+      );
+    },
   };
 }
 
 describe('WLHeadings.inject', () => {
-  it('places one heading per group, before the group\'s first item', () => {
-    const { document, container } = fakePlaylist(['a', 'b', 'c']);
+  it('places each group\'s heading inside that group\'s first item, never beside it', () => {
+    const { document, container, headingIn, assertChildListIsPureItems } = fakePlaylist(['a', 'b', 'c']);
     const headings = loadGlobal('content/headings.js', 'WLHeadings', {
       document, SELECTORS, MutationObserver: class { observe() {} disconnect() {} },
     });
@@ -227,12 +284,19 @@ describe('WLHeadings.inject', () => {
     const placed = headings.inject(boundaries);
 
     assert.equal(placed, 2);
-    const tags = container.children.map(el => el.tagName ?? el._isItem);
-    assert.deepEqual(tags, ['h2', true, true, 'h2', true]);
+    assertChildListIsPureItems();
+    assert.equal(headingIn(0)?.getAttribute('data-wl-heading'), 'Music');
+    assert.equal(headingIn(1), null, 'a video mid-group carries no heading');
+    assert.equal(headingIn(2)?.getAttribute('data-wl-heading'), 'Tech & AI');
+    assert.deepEqual(
+      container.children.map(el => el.classList.contains('wl-group-anchor')),
+      [true, false, true],
+      'only group-starting items get the class that opens the margin gap',
+    );
   });
 
   it('is idempotent: running twice produces one heading per group', () => {
-    const { document, container } = fakePlaylist(['a', 'b']);
+    const { document, allHeadings, assertChildListIsPureItems } = fakePlaylist(['a', 'b']);
     const headings = loadGlobal('content/headings.js', 'WLHeadings', {
       document, SELECTORS, MutationObserver: class { observe() {} disconnect() {} },
     });
@@ -241,8 +305,8 @@ describe('WLHeadings.inject', () => {
     headings.inject(boundaries);
     headings.inject(boundaries);
 
-    const headingEls = container.children.filter(el => el.tagName === 'h2');
-    assert.equal(headingEls.length, 1);
+    assert.equal(allHeadings().length, 1);
+    assertChildListIsPureItems();
   });
 
   it('skips a group whose first video is not yet in the DOM (not loaded yet)', () => {
@@ -259,14 +323,14 @@ describe('WLHeadings.inject', () => {
   });
 
   it('labels the heading text with the group name and video count', () => {
-    const { document, container } = fakePlaylist(['a']);
+    const { document, headingIn } = fakePlaylist(['a']);
     const headings = loadGlobal('content/headings.js', 'WLHeadings', {
       document, SELECTORS, MutationObserver: class { observe() {} disconnect() {} },
     });
 
     headings.inject([{ videoId: 'a', name: 'Music', count: 3 }]);
 
-    const heading = container.children.find(el => el.tagName === 'h2');
+    const heading = headingIn(0);
     assert.equal(heading.children[0].textContent, 'Music');
     assert.equal(heading.children[1].textContent, '3 videos');
   });
@@ -274,7 +338,7 @@ describe('WLHeadings.inject', () => {
 
 describe('WLHeadings.clear', () => {
   it('removes every injected heading and leaves items untouched', () => {
-    const { document, container } = fakePlaylist(['a', 'b']);
+    const { document, container, allHeadings } = fakePlaylist(['a', 'b']);
     const headings = loadGlobal('content/headings.js', 'WLHeadings', {
       document, SELECTORS, MutationObserver: class { observe() {} disconnect() {} },
     });
@@ -285,8 +349,24 @@ describe('WLHeadings.clear', () => {
 
     headings.clear();
 
-    assert.equal(container.children.filter(el => el.tagName === 'h2').length, 0);
+    assert.equal(allHeadings().length, 0);
     assert.equal(container.children.filter(el => el._isItem).length, 2);
+  });
+
+  it('strips the anchor class, so no item is left holding an empty margin gap', () => {
+    const { document, container } = fakePlaylist(['a', 'b']);
+    const headings = loadGlobal('content/headings.js', 'WLHeadings', {
+      document, SELECTORS, MutationObserver: class { observe() {} disconnect() {} },
+    });
+    headings.inject(headings.boundariesFrom([video({ id: 'a', cluster: 'Music' })]));
+    assert.equal(container.children[0].classList.contains('wl-group-anchor'), true, 'setup');
+
+    headings.clear();
+
+    assert.deepEqual(
+      container.children.map(el => el.classList.contains('wl-group-anchor')),
+      [false, false],
+    );
   });
 });
 
@@ -334,7 +414,7 @@ describe('WLHeadings.watch', () => {
   }
 
   it('ignores mutations that are only its own injected headings, so it cannot loop forever', () => {
-    const { document, container } = fakePlaylist(['a']);
+    const { document, headingIn } = fakePlaylist(['a']);
     const clock = fakeClock();
     let observerCallback;
     const FakeObserver = class {
@@ -348,7 +428,8 @@ describe('WLHeadings.watch', () => {
     });
 
     headings.watch(headings.boundariesFrom([video({ id: 'a', cluster: 'Music' })]));
-    const injectedHeading = container.children.find(el => el.tagName === 'h2');
+    const injectedHeading = headingIn(0);
+    assert.ok(injectedHeading, 'setup: a heading must have been injected to feed back to the observer');
 
     // Simulate the observer seeing the mutation that inject() itself just caused.
     observerCallback([{ addedNodes: [injectedHeading], removedNodes: [] }]);
@@ -380,7 +461,7 @@ describe('WLHeadings.watch', () => {
   });
 
   it('debounces a real YouTube append and re-injects once flushed', () => {
-    const { document, container, addItem } = fakePlaylist(['a']);
+    const { document, container, addItem, allHeadings } = fakePlaylist(['a']);
     const clock = fakeClock();
     let observerCallback;
     const FakeObserver = class {
@@ -397,7 +478,7 @@ describe('WLHeadings.watch', () => {
       video({ id: 'a', cluster: 'Music' }),
       video({ id: 'b', cluster: 'Tech & AI' }),
     ]));
-    assert.equal(container.children.filter(el => el.tagName === 'h2').length, 1, 'b has not loaded yet');
+    assert.equal(allHeadings().length, 1, 'b has not loaded yet');
 
     const newItem = { nodeType: 1, _isItem: true };
     addItem('b');
@@ -405,13 +486,13 @@ describe('WLHeadings.watch', () => {
     assert.equal(clock.scheduled, true, 'a real append must schedule a debounced re-injection');
 
     clock.flush();
-    assert.equal(container.children.filter(el => el.tagName === 'h2').length, 2);
+    assert.equal(allHeadings().length, 2);
   });
 
   it('attaches even when no playlist item exists yet, and injects once items appear', () => {
     // No items at all yet — this is the state of the page on first load,
     // before YouTube has rendered a single ytd-playlist-video-renderer.
-    const { document, container, addItem } = fakePlaylist([]);
+    const { document, container, addItem, allHeadings } = fakePlaylist([]);
     const clock = fakeClock();
     let observerCallback;
     let observeCalls = 0;
@@ -428,18 +509,18 @@ describe('WLHeadings.watch', () => {
     headings.watch(headings.boundariesFrom([video({ id: 'a', cluster: 'Music' })]));
 
     assert.equal(observeCalls, 1, 'the observer must attach even though the playlist has not rendered yet');
-    assert.equal(container.children.filter(el => el.tagName === 'h2').length, 0, 'nothing to inject before yet');
+    assert.equal(allHeadings().length, 0, 'nothing to inject before yet');
 
     // The playlist renders its first item.
     addItem('a');
     observerCallback([{ addedNodes: [{ nodeType: 1 }], removedNodes: [] }]);
     clock.flush();
 
-    assert.equal(container.children.filter(el => el.tagName === 'h2').length, 1);
+    assert.equal(allHeadings().length, 1);
   });
 
   it('clear() cancels a pending debounce, so a queued re-injection cannot undo it', () => {
-    const { document, container } = fakePlaylist(['a']);
+    const { document, container, allHeadings } = fakePlaylist(['a']);
     const clock = fakeClock();
     let observerCallback;
     const FakeObserver = class {
@@ -453,7 +534,7 @@ describe('WLHeadings.watch', () => {
     });
 
     headings.watch(headings.boundariesFrom([video({ id: 'a', cluster: 'Music' })]));
-    assert.equal(container.children.filter(el => el.tagName === 'h2').length, 1);
+    assert.equal(allHeadings().length, 1);
 
     // A mutation lands and schedules a debounced re-injection...
     observerCallback([{ addedNodes: [{ nodeType: 1 }], removedNodes: [] }]);
@@ -461,11 +542,11 @@ describe('WLHeadings.watch', () => {
 
     // ...but the caller clears headings before that debounce fires.
     headings.clear();
-    assert.equal(container.children.filter(el => el.tagName === 'h2').length, 0);
+    assert.equal(allHeadings().length, 0);
 
     clock.flush();
 
-    assert.equal(container.children.filter(el => el.tagName === 'h2').length, 0,
+    assert.equal(allHeadings().length, 0,
       'a queued re-injection must not resurrect headings after clear()');
   });
 
@@ -496,26 +577,52 @@ describe('WLHeadings.watch', () => {
 });
 
 describe('WLHeadings.inject drift repair', () => {
-  it('repositions a drifted heading instead of duplicating it when a stray node lands between it and its anchor', () => {
-    const { document, container } = fakePlaylist(['a']);
+  it('moves a heading that ended up in the wrong item instead of duplicating it', () => {
+    // Polymer re-renders the list while dragging and reorders items under us, so
+    // a heading can end up held by an item that no longer starts its group.
+    const { document, container, allHeadings, headingIn } = fakePlaylist(['a', 'b']);
     const headings = loadGlobal('content/headings.js', 'WLHeadings', {
       document, SELECTORS, MutationObserver: class { observe() {} disconnect() {} },
     });
     const boundaries = headings.boundariesFrom([video({ id: 'a', cluster: 'Music' })]);
 
     headings.inject(boundaries);
-    const itemA = container.children.find(el => el._isItem);
+    const heading = headingIn(0);
 
-    // Something (YouTube re-render, another script) inserts a node between
-    // the heading and its anchor item.
-    const stray = { nodeType: 1, tagName: 'div' };
-    container.insertBefore(stray, itemA);
-    assert.deepEqual(container.children.map(el => el.tagName), ['h2', 'div', undefined]);
+    // Something moves the heading into the wrong item.
+    container.children[1].appendChild(heading);
+    assert.equal(headingIn(0), null, 'setup: the heading has drifted');
+    assert.equal(headingIn(1), heading, 'setup: it now hangs off the wrong item');
 
     const placed = headings.inject(boundaries);
 
     assert.equal(placed, 1);
-    assert.equal(container.children.filter(el => el.tagName === 'h2').length, 1, 'must not duplicate the heading');
-    assert.deepEqual(container.children.map(el => el.tagName), ['div', 'h2', undefined]);
+    assert.equal(allHeadings().length, 1, 'must not duplicate the heading');
+    assert.equal(headingIn(0), heading, 'the same node must be moved back, not replaced');
+    assert.equal(headingIn(1), null);
+  });
+
+  it('keeps headings out of the sortable container even when a stray sibling appears', () => {
+    // Regression for the drag-and-drop break: YouTube's handleDragMove_ caches
+    // one rect per child of the container and indexes it by child position, so
+    // any non-item child made it read undefined and throw on every mousemove.
+    const { document, container, assertChildListIsPureItems } = fakePlaylist(['a']);
+    const headings = loadGlobal('content/headings.js', 'WLHeadings', {
+      document, SELECTORS, MutationObserver: class { observe() {} disconnect() {} },
+    });
+    const boundaries = headings.boundariesFrom([video({ id: 'a', cluster: 'Music' })]);
+
+    headings.inject(boundaries);
+    assertChildListIsPureItems();
+
+    // A foreign node lands in the container. Re-injecting must not respond by
+    // putting a heading beside the items too.
+    container.insertBefore({ nodeType: 1, tagName: 'div', children: [] }, container.children[0]);
+    headings.inject(boundaries);
+
+    assert.equal(
+      container.children.filter(el => el.tagName === 'h2').length, 0,
+      'no heading may be a direct child of the sortable container',
+    );
   });
 });
