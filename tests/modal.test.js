@@ -84,8 +84,10 @@ describe('WLModal.metaFor', () => {
 function fakeUi() {
   const make = (tag) => ({
     tagName: tag, className: '', type: '', innerHTML: '', textContent: '',
-    children: [],
+    children: [], _attrs: {},
     _listeners: {},
+    setAttribute(k, v) { this._attrs[k] = v; },
+    getAttribute(k) { return k in this._attrs ? this._attrs[k] : null; },
     addEventListener(ev, fn) { this._listeners[ev] = fn; },
     append(...nodes) { this.children.push(...nodes); },
     appendChild(node) { this.children.push(node); },
@@ -276,5 +278,74 @@ describe('WLModal.close', () => {
 
     assert.doesNotThrow(() => modal.close());
     assert.equal(detached._focused, false);
+  });
+});
+
+describe('WLModal.showBusy cancellability', () => {
+  function busyWith(opts, handlers = {}) {
+    const { make, document } = fakeUi();
+    const modal = loadGlobal('content/modal.js', 'WLModal', {
+      document,
+      WLHeadings: { present: () => false },
+    });
+    const body = make('div');
+    const footer = make('div');
+    modal._body = () => body;
+    modal._footer = () => footer;
+    modal._handlers = handlers;
+    modal.close = () => { closed = true; };
+    let closed = false;
+    modal.showBusy('Applying 3 moves...', opts);
+    return { modal, footer, button: footer.children[0], wasClosed: () => closed };
+  }
+
+  it('is cancellable by default', () => {
+    const { modal, button } = busyWith(undefined);
+    assert.equal(modal._cancellable, true);
+    assert.equal(button.disabled, undefined, 'the default Cancel button stays enabled');
+  });
+
+  it('disables the button when the work has already been sent', () => {
+    const { modal, button } = busyWith({ cancellable: false });
+    assert.equal(modal._cancellable, false);
+    assert.equal(button.disabled, true);
+    assert.equal(button._listeners.click, undefined, 'no click handler is wired at all');
+  });
+
+  it('ignores _cancel() while uninterruptible, so Escape and backdrop clicks cannot fire onCancel', () => {
+    // Regression: the reorder is already written by this point. Cancelling only
+    // hid the modal and skipped the reload, leaving the playlist silently
+    // reordered while the UI implied nothing had happened. Escape and backdrop
+    // clicks route through _cancel() too, which is why the guard lives there
+    // rather than on the button.
+    let cancelled = false;
+    const { modal, wasClosed } = busyWith({ cancellable: false }, { onCancel: () => { cancelled = true; } });
+
+    modal._cancel();
+
+    assert.equal(cancelled, false, 'onCancel must not fire');
+    assert.equal(wasClosed(), false, 'the modal must not close');
+  });
+
+  it('still cancels normally when the state is interruptible', () => {
+    let cancelled = false;
+    const { modal, wasClosed } = busyWith({ cancellable: true }, { onCancel: () => { cancelled = true; } });
+
+    modal._cancel();
+
+    assert.equal(cancelled, true);
+    assert.equal(wasClosed(), true);
+  });
+
+  it('restores cancellability when a later state renders', () => {
+    // Without this, one uninterruptible apply would wedge Escape shut for the
+    // rest of the modal's life.
+    const { modal, footer } = busyWith({ cancellable: false });
+    assert.equal(modal._cancellable, false, 'setup');
+
+    footer.children.length = 0;
+    modal.showError('something broke');
+
+    assert.equal(modal._cancellable, true);
   });
 });

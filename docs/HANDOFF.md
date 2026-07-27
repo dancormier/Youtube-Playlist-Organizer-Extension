@@ -197,8 +197,8 @@ Ledgers live in `.superpowers/sdd/<plan-name>/progress.md` (gitignored). Notable
 - Each `applyOrder` poll re-pages the whole playlist — up to ~12 re-reads in the 10s window on a multi-page playlist
 - `_trapFocus` dereferences `_root` without optional chaining; currently safe because `close()` removes the keydown listener first
 - A storage write queued behind a failing one inherits that rejection rather than retrying
-- Cluster names match the taxonomy by exact string, so `"tech & ai"` would fragment from `"Tech & AI"`
-- Cancelling during "Applying N moves..." closes the modal, but the write was already sent — the playlist reorders, no reload happens, and the group map isn't persisted. Consider relabelling that button or disabling it once the write is in flight
+- ~~Cluster names match the taxonomy by exact string~~ — **fixed 2026-07-27.** `lib/sort.js` folds names case-insensitively and trims whitespace. Taxonomy spellings win; model-invented names fold onto whichever spelling arrived first
+- ~~Cancelling during "Applying N moves..."~~ — **fixed 2026-07-27.** `showBusy` takes `{ cancellable }`, and `applySort` passes `false` once the reorder is sent. The guard lives in `_cancel()`, not on the button, because Escape and backdrop clicks route through it too
 
 ---
 

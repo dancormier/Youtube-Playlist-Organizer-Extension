@@ -129,7 +129,16 @@ const WLModal = {
     this.showModes();
   },
 
+  /**
+   * True unless a state has declared itself uninterruptible. Backdrop clicks and
+   * Escape route through here too, so the flag has to live on _cancel() rather
+   * than on the button — otherwise pressing Escape would still "cancel" an
+   * operation that cannot actually be stopped.
+   */
+  _cancellable: true,
+
   _cancel() {
+    if (!this._cancellable) return;
     this.close();
     this._handlers.onCancel?.();
   },
@@ -167,6 +176,8 @@ const WLModal = {
     const body = this._body();
     const footer = this._footer();
     if (!body) return;
+
+    this._cancellable = true;
 
     this.setStatus('');
     body.textContent = '';
@@ -211,11 +222,19 @@ const WLModal = {
     ai.focus();
   },
 
-  showBusy(text) {
+  /**
+   * `cancellable: false` is for work already sent to YouTube. Cancelling then
+   * closed the modal and skipped the reload, but the reorder had already been
+   * written — so the playlist silently changed while the UI implied nothing
+   * happened. The button stays visible but disabled so the layout does not jump
+   * and the state is legible.
+   */
+  showBusy(text, { cancellable = true } = {}) {
     const body = this._body();
     const footer = this._footer();
     if (!body) return;
 
+    this._cancellable = cancellable;
     body.textContent = '';
     footer.textContent = '';
 
@@ -232,15 +251,22 @@ const WLModal = {
     cancel.className = 'wl-modal-btn';
     cancel.type = 'button';
     cancel.textContent = 'Cancel';
-    cancel.addEventListener('click', () => this._cancel());
+    if (cancellable) {
+      cancel.addEventListener('click', () => this._cancel());
+    } else {
+      cancel.disabled = true;
+      cancel.title = 'The reorder has already been sent and cannot be stopped';
+    }
     footer.appendChild(cancel);
-    cancel.focus();
+    if (cancellable) cancel.focus();
   },
 
   showPreview(sortOrder) {
     const body = this._body();
     const footer = this._footer();
     if (!body) return;
+
+    this._cancellable = true;
 
     this.setStatus('');
     body.textContent = '';
@@ -306,6 +332,8 @@ const WLModal = {
     const body = this._body();
     const footer = this._footer();
     if (!body) return;
+
+    this._cancellable = true;
 
     body.textContent = '';
     footer.textContent = '';
