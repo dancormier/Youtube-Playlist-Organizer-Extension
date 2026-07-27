@@ -79,6 +79,7 @@ background/
 2. **`lib/` files ARE ES modules**, background only. Firefox's background is built by **concatenating** them and `sed`-ing out module syntax. `build.sh` strips `export function`, `export async function`, `export const`, and `import`. **Any other export form silently produces a broken Firefox background script.** This already happened once — `export const` wasn't stripped when `lib/taxonomy.js` was added.
 3. **No DOM fallback.** InnerTube failures surface as errors. Deliberate: one path to maintain for a single-user tool.
 4. **Only our own UI avoids YouTube selectors.** The trigger and modal are elements we create. Heading injection genuinely must attach to YouTube's list — that dependency is confined to `content/selectors.js`.
+5. **Nothing may become a child of `DIV#contents` except playlist items.** YouTube's `handleDragMove_` indexes a rect cache by child position, so one foreign sibling breaks drag-to-reorder for the whole list. Headings therefore mount *inside* their anchor item. See resolved Issue 2.
 
 ### Decisions already made — don't re-litigate
 
@@ -146,30 +147,32 @@ Nothing logs until the click. Then the script loads and mounts correctly **on it
 
 ---
 
-## OPEN ISSUE 2 — headings break playlist drag-and-drop
+## ~~OPEN ISSUE 2~~ — RESOLVED 2026-07-27, verified by Dan
 
-**Reported by Dan 2026-07-27, not yet investigated.**
+Injected headings broke YouTube's drag-to-reorder. **Cause measured, not guessed.**
 
-YouTube playlists have drag handles for manual reordering. After headings are injected, drag-and-drop appears broken. Dan needs either working drag-and-drop *or* a way to remove the headings.
+The headings were `<h2>` **siblings** of `ytd-playlist-video-renderer` inside `DIV#contents`. YouTube's `handleDragMove_` caches one rect per child of that container and indexes it by child position, so a foreign sibling made an index resolve to `undefined`:
 
-**Likely cause (unverified):** `WLHeadings.inject()` inserts `<h2>` elements as **siblings** of `ytd-playlist-video-renderer` inside YouTube's list container. Polymer's sortable almost certainly computes indices from sibling position, so foreign siblings would corrupt it.
+```
+Uncaught TypeError: can't access property "top", q is undefined
+    OJl ... handleDragMove_ ...
+```
 
-**Options, roughly in order of promise:**
+That fired on every mousemove. Polymer also wiped the foreign siblings during its own re-render mid-drag — which is why drag started working partway through a drag, once the headings had been destroyed.
 
-1. **Inject into the item's own subtree** rather than as a sibling — the heading renders inside the first video renderer of each group, leaving sibling order untouched. Most likely to preserve drag-and-drop. Needs a stable in-renderer mount point.
-2. **Absolutely-positioned overlay** — headings float over the list, positioned from each anchor item's `getBoundingClientRect()`. No DOM interference at all, but needs repositioning on scroll and resize.
-3. **A clear-headings control.** Dan suggested "Reset UI"; better wording would be **"Hide group headings"** since that's literally what it does — reversible, and doesn't imply resetting anything else. Cheapest option, but it's a workaround rather than a fix.
-4. **Remove headings on drag start, restore on drop.** Fiddly; YouTube's drag events would need investigating.
+**Ruled out:** the observer re-injecting mid-drag was a plausible second mechanism and turned out not to be the cause. With the observer stopped and the heading nodes left in place, drag was still broken; with the nodes removed, it worked. Both tested in Firefox.
 
-Dan is fine with option 3 if the others prove hard, but prefers drag-and-drop simply working.
+**Fix:** each heading is now a **child of the item that starts its group**. `ytd-playlist-video-renderer` has **no shadow root** (probed 2026-07-27; light children are `DIV#index-container`, `DIV#content`, `DIV#menu`; `position: static`), so a light-DOM child renders normally. The anchor item gets a `wl-group-anchor` class supplying `position: relative` and `margin-top`, and the heading is absolutely positioned into that gap with `top: 0; transform: translateY(-100%)`. Being out of flow, it cannot disturb the item's internal flex row. `DIV#contents` holds only playlist items again.
+
+**Do not move headings back into the container's child list.** Two tests guard this (`assertChildListIsPureItems` in the inject suite, and the stray-sibling case in drift repair); both were verified to fail against the old sibling insertion.
+
+**Also shipped:** a permanent **"Hide group headings"** control in the modal (option 3 from the original list). It stops the observer, removes the nodes, and clears the stored group map so they do not return on reload. Only rendered when `WLHeadings.present()` is true.
 
 ---
 
-## OPEN ISSUE 3 — heading alignment
+## ~~OPEN ISSUE 3~~ — RESOLVED 2026-07-27
 
-Dan: section headings need **`padding-left: 36px`** so they align with the video thumbnails below.
-
-One-line change in `styles/headings.css`. **Deliberately not done at handoff** — if Issue 2 moves headings into the item subtree or an overlay, the correct value changes. Do this after Issue 2 is settled.
+Headings now align with the video thumbnails via `left: 36px` on `.wl-playlist-heading` in `styles/headings.css`. This waited on Issue 2, since the mount point determined the correct property and value — it landed as `left` on an absolutely-positioned element, not the `padding-left` originally proposed.
 
 ---
 
