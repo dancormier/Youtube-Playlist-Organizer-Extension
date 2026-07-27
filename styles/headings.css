@@ -14,7 +14,11 @@
 
 .wl-playlist-heading {
   position: absolute;
-  top: -40px;
+  /* Sits the heading's bottom edge on the item's top edge. Doing it with
+     translateY rather than a negative `top` keeps it anchored whatever the
+     heading's own height turns out to be — no magic number tied to the font. */
+  top: 0;
+  transform: translateY(-100%);
   /* Aligns the heading with the video thumbnails below it. */
   left: 36px;
   right: 0;
