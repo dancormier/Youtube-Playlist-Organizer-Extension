@@ -199,17 +199,6 @@ const WLModal = {
       hide.textContent = 'Hide group headings';
       hide.addEventListener('click', () => this._handlers.onHideHeadings?.());
       footer.appendChild(hide);
-
-      // TEMPORARY — diagnostic for "headings break drag-and-drop". Stops the
-      // observer without removing the headings, to tell apart the two possible
-      // causes: heading nodes polluting the sibling chain Polymer indexes, vs
-      // the observer re-injecting them mid-drag. Delete once that is settled.
-      const freeze = document.createElement('button');
-      freeze.className = 'wl-modal-btn';
-      freeze.type = 'button';
-      freeze.textContent = 'Freeze headings (debug)';
-      freeze.addEventListener('click', () => this._handlers.onFreezeHeadings?.());
-      footer.appendChild(freeze);
     }
 
     const cancel = document.createElement('button');

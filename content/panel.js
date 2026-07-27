@@ -13,7 +13,6 @@ const WLPanel = {
       onCancel: () => { this._runId++; this.currentSortOrder = []; },
       onToggleUnwatched: (videoId) => this.toggleUnwatched(videoId),
       onHideHeadings: () => this.hideHeadings(),
-      onFreezeHeadings: () => this.freezeHeadings(),
     });
   },
 
@@ -31,18 +30,6 @@ const WLPanel = {
     } catch (err) {
       console.warn('WLPanel: failed to clear the stored group map; headings will return on reload', err);
     }
-  },
-
-  /**
-   * TEMPORARY — diagnostic for "headings break drag-and-drop". Stops the
-   * observer but leaves the heading nodes in place, so drag can be tested with
-   * exactly one of the two suspected causes removed. Delete along with the
-   * modal button once the cause is settled.
-   */
-  freezeHeadings() {
-    WLHeadings.stop();
-    WLModal.close();
-    console.info(WL_LOG, 'headings observer stopped; heading nodes left in place');
   },
 
   /**

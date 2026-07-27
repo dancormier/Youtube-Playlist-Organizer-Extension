@@ -117,7 +117,7 @@ describe('WLModal.showModes', () => {
 
   it('offers the heading controls when headings are present', () => {
     const { labels } = showModesWith({ present: true });
-    assert.deepEqual([...labels], ['Hide group headings', 'Freeze headings (debug)', 'Close']);
+    assert.deepEqual([...labels], ['Hide group headings', 'Close']);
   });
 
   it('wires the hide button to onHideHeadings', () => {
