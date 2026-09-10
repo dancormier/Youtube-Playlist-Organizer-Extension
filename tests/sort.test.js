@@ -1,7 +1,10 @@
 // tests/sort.test.js
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSortOrder, effectiveProgress, WATCHED_THRESHOLD } from '../lib/sort.js';
+import {
+  buildSortOrder, buildDurationSortOrder, effectiveProgress, WATCHED_THRESHOLD,
+  SORT_DEFAULTS, SORT_CHOICES, normalizeSortOptions,
+} from '../lib/sort.js';
 import { UNAVAILABLE_GROUP } from '../lib/taxonomy.js';
 
 function video(overrides = {}) {
@@ -224,5 +227,178 @@ describe('buildSortOrder cluster-name folding', () => {
 
     assert.deepEqual(order.map(v => v.id), ['music', 'tech'],
       'Music precedes Tech & AI in the taxonomy');
+  });
+});
+
+describe('normalizeSortOptions', () => {
+  it('fills every default from nothing', () => {
+    assert.deepEqual(normalizeSortOptions(undefined), SORT_DEFAULTS);
+    assert.deepEqual(normalizeSortOptions(null), SORT_DEFAULTS);
+    assert.deepEqual(normalizeSortOptions('nope'), SORT_DEFAULTS);
+  });
+
+  it('keeps whitelisted values and replaces unknown ones with the default', () => {
+    const s = normalizeSortOptions({ withinGroup: 'title', inProgress: 'bogus', groupOrder: 'alpha', extra: 1 });
+    assert.deepEqual(s, { withinGroup: 'title', inProgress: 'top', groupOrder: 'alpha' });
+  });
+
+  it('accepts every value SORT_CHOICES offers', () => {
+    for (const [key, choices] of Object.entries(SORT_CHOICES)) {
+      for (const { value } of choices) assert.equal(normalizeSortOptions({ [key]: value })[key], value);
+    }
+  });
+
+  it('defaults are the first choice of each select', () => {
+    for (const [key, choices] of Object.entries(SORT_CHOICES)) assert.equal(choices[0].value, SORT_DEFAULTS[key]);
+  });
+});
+
+describe('buildSortOrder options: withinGroup', () => {
+  const clusters = { clusters: [{ name: 'Music', videoIds: ['a', 'b', 'c'] }] };
+  const videos = [
+    video({ id: 'a', title: 'banana', duration: 500 }),
+    video({ id: 'b', title: 'Apple', duration: 900 }),
+    video({ id: 'c', title: 'cherry', duration: 100 }),
+  ];
+  const ids = (options) => buildSortOrder(videos, clusters, [], undefined, options).map(v => v.id);
+
+  it('duration-asc is the default and matches the five-argument form', () => {
+    assert.deepEqual(ids({}), ['c', 'a', 'b']);
+    assert.deepEqual(ids({ withinGroup: 'duration-asc' }), buildSortOrder(videos, clusters, []).map(v => v.id));
+  });
+
+  it('duration-desc puts the longest first', () => {
+    assert.deepEqual(ids({ withinGroup: 'duration-desc' }), ['b', 'a', 'c']);
+  });
+
+  it('playlist keeps arrival order, including across interleaved groups', () => {
+    assert.deepEqual(ids({ withinGroup: 'playlist' }), ['a', 'b', 'c']);
+    const mixed = [1, 2, 3, 4, 5, 6, 7].map(n => video({ id: String(n), duration: 1000 - n * 100 }));
+    const twoGroups = { clusters: [
+      { name: 'Music', videoIds: ['1', '5', '7'] },
+      { name: 'Tech & AI', videoIds: ['2', '3', '4', '6'] },
+    ] };
+    const order = buildSortOrder(mixed, twoGroups, [], undefined, { withinGroup: 'playlist' }).map(v => v.id);
+    assert.deepEqual(order, ['1', '5', '7', '2', '3', '4', '6']);
+  });
+
+  it('title sorts case-insensitively', () => {
+    assert.deepEqual(ids({ withinGroup: 'title' }), ['b', 'a', 'c']);
+  });
+
+  it('never changes the in-progress group, which always sorts by time left', () => {
+    const started = [
+      video({ id: 'x', title: 'zzz', duration: 1000, percentWatched: 90 }), // 100 left
+      video({ id: 'y', title: 'aaa', duration: 1000, percentWatched: 50 }), // 500 left
+    ];
+    for (const withinGroup of ['duration-desc', 'playlist', 'title']) {
+      const order = buildSortOrder([...started].reverse(), clusters, [], undefined, { withinGroup });
+      assert.deepEqual(order.map(v => v.id), ['x', 'y'], withinGroup);
+    }
+  });
+});
+
+describe('buildSortOrder options: inProgress', () => {
+  const clusters = { clusters: [
+    { name: 'Music', videoIds: ['m1', 'm2', 'm3'] },
+    { name: 'Tech & AI', videoIds: ['t1', 't2'] },
+  ] };
+  const videos = [
+    video({ id: 't1', duration: 300 }),
+    video({ id: 'm1', duration: 900, percentWatched: 50 }), // 450 left
+    video({ id: 'm2', duration: 200 }),
+    video({ id: 'm3', duration: 1000, percentWatched: 90 }), // 100 left
+    video({ id: 't2', duration: 100, percentWatched: 20 }), // 80 left
+  ];
+
+  it('top (default) makes one null-cluster group ordered by time left', () => {
+    const order = buildSortOrder(videos, clusters, [], undefined, { inProgress: 'top' });
+    assert.deepEqual(order.map(v => v.id), ['t2', 'm3', 'm1', 'm2', 't1']);
+    assert.deepEqual(order.slice(0, 3).map(v => v.cluster), [null, null, null]);
+    assert.equal(order.every(v => typeof v.inProgress === 'boolean'), true);
+  });
+
+  it('within keeps started videos in their group, first, by time left, then the rest per withinGroup', () => {
+    const order = buildSortOrder(videos, clusters, [], undefined, { inProgress: 'within', withinGroup: 'duration-asc' });
+    assert.deepEqual(order.map(v => v.id), ['m3', 'm1', 'm2', 't2', 't1']);
+    assert.equal(order.some(v => v.cluster === null), false, 'no In Progress group');
+    const m3 = order.find(v => v.id === 'm3');
+    assert.equal(m3.cluster, 'Music');
+    assert.equal(m3.percentWatched, 90, 'the modal still needs this to print "left"');
+    assert.equal(m3.inProgress, true);
+    assert.equal(order.find(v => v.id === 'm2').inProgress, false);
+  });
+
+  it('within honours withinGroup for the unwatched tail only', () => {
+    const more = [...videos, video({ id: 'm4', duration: 50 })];
+    const withM4 = { clusters: [{ name: 'Music', videoIds: ['m1', 'm2', 'm3', 'm4'] }, clusters.clusters[1]] };
+    const asc = buildSortOrder(more, withM4, [], undefined, { inProgress: 'within', withinGroup: 'duration-asc' });
+    const desc = buildSortOrder(more, withM4, [], undefined, { inProgress: 'within', withinGroup: 'duration-desc' });
+    assert.deepEqual(asc.map(v => v.id), ['m3', 'm1', 'm4', 'm2', 't2', 't1']);
+    assert.deepEqual(desc.map(v => v.id), ['m3', 'm1', 'm2', 'm4', 't2', 't1'], 'started pair unchanged, tail reversed');
+  });
+
+  it('ignore sorts started videos like any other and produces no null cluster', () => {
+    const order = buildSortOrder(videos, clusters, [], undefined, { inProgress: 'ignore' });
+    assert.deepEqual(order.map(v => v.id), ['m2', 'm1', 'm3', 't2', 't1']);
+    assert.equal(order.some(v => v.cluster === null), false);
+  });
+
+  it('within and ignore still respect overrides for the started flag', () => {
+    const order = buildSortOrder(videos, clusters, ['m3'], undefined, { inProgress: 'within' });
+    assert.deepEqual(order.map(v => v.id), ['m1', 'm2', 'm3', 't2', 't1']);
+    assert.equal(order.find(v => v.id === 'm3').inProgress, false);
+  });
+});
+
+describe('buildSortOrder options: groupOrder', () => {
+  const taxonomy = ['Zebra', 'Music', 'Apple'];
+  const clusters = { clusters: [
+    { name: 'Music', videoIds: ['m1'] },
+    { name: 'Apple', videoIds: ['a1', 'a2'] },
+    { name: 'Zebra', videoIds: ['z1', 'z2'] },
+    { name: 'Knitting', videoIds: ['k1', 'k2', 'k3'] },
+  ] };
+  const videos = [
+    video({ id: 'other1' }), video({ id: 'other2' }), video({ id: 'other3' }), video({ id: 'other4' }),
+    video({ id: 'k1' }), video({ id: 'k2' }), video({ id: 'k3' }),
+    video({ id: 'a1' }), video({ id: 'a2' }),
+    video({ id: 'z1' }), video({ id: 'z2' }),
+    video({ id: 'm1' }),
+    video({ id: 'ghost', unavailable: true }),
+  ];
+  const groupsOf = (options) => {
+    const order = buildSortOrder(videos, clusters, [], taxonomy, options);
+    return [...new Set(order.map(v => v.cluster))];
+  };
+
+  it('taxonomy (default): taxonomy order, invented names, Other, Unavailable', () => {
+    assert.deepEqual(groupsOf({}), ['Zebra', 'Music', 'Apple', 'Knitting', 'Other', 'Unavailable']);
+  });
+
+  it('size: largest first, ties broken by taxonomy order; Other stays last even when biggest', () => {
+    assert.deepEqual(groupsOf({ groupOrder: 'size' }), ['Knitting', 'Zebra', 'Apple', 'Music', 'Other', 'Unavailable']);
+  });
+
+  it('alpha: alphabetical, Other last', () => {
+    assert.deepEqual(groupsOf({ groupOrder: 'alpha' }), ['Apple', 'Knitting', 'Music', 'Zebra', 'Other', 'Unavailable']);
+  });
+
+  it('with inProgress top, the In Progress group precedes every ordering', () => {
+    const withStarted = [video({ id: 'p', percentWatched: 50 }), ...videos];
+    for (const groupOrder of ['taxonomy', 'size', 'alpha']) {
+      const order = buildSortOrder(withStarted, clusters, [], taxonomy, { groupOrder });
+      assert.equal(order[0].id, 'p', groupOrder);
+      assert.equal(order[order.length - 1].id, 'ghost', groupOrder);
+    }
+  });
+});
+
+describe('buildSortOrder ignores options in the non-AI path', () => {
+  it('buildDurationSortOrder is untouched by sort options', () => {
+    const order = buildDurationSortOrder([video({ id: 'b', duration: 9 }), video({ id: 'a', duration: 1 })]);
+    assert.deepEqual(order.map(v => v.id), ['a', 'b']);
+    assert.equal('cluster' in order[0], false);
+    assert.equal('inProgress' in order[0], false);
   });
 });

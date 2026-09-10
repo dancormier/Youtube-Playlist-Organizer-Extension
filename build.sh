@@ -42,8 +42,8 @@ SHARED=(
 LIB=(
   lib/taxonomy.js
   lib/providers.js
-  lib/settings.js
   lib/sort.js
+  lib/settings.js
   lib/classify.js
 )
 
