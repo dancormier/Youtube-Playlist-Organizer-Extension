@@ -1,6 +1,7 @@
-/* styles/modal.css — floating trigger and preview modal.
-   Both elements are owned entirely by the extension: no YouTube selectors,
-   nothing to break when YouTube changes its markup. */
+/* styles/modal.css — trigger button and preview modal.
+   The trigger prefers the playlist's own filter-chip row (SELECTORS.TRIGGER_HOSTS)
+   and falls back to a floating button; the modal is owned entirely by the
+   extension. */
 
 .wl-trigger {
   position: fixed;
@@ -24,6 +25,24 @@
 }
 .wl-trigger:hover { background: #fff; }
 .wl-trigger svg { width: 20px; height: 20px; }
+
+/* Inside YouTube's chip row: chip-sized, pushed to the right end of the row. */
+.wl-trigger.wl-trigger-inline {
+  position: static;
+  margin-left: auto;
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 1.4rem;
+  box-shadow: none;
+  background: rgba(0, 0, 0, 0.05);
+  color: #0f0f0f;
+}
+.wl-trigger.wl-trigger-inline:hover { background: rgba(0, 0, 0, 0.1); }
+html[dark] .wl-trigger.wl-trigger-inline { background: rgba(255, 255, 255, 0.1); color: #f1f1f1; }
+html[dark] .wl-trigger.wl-trigger-inline:hover { background: rgba(255, 255, 255, 0.2); }
+.wl-trigger.wl-trigger-inline svg { width: 18px; height: 18px; }
 
 .wl-modal-backdrop {
   position: fixed;
@@ -61,7 +80,9 @@
 .wl-modal-title { flex: 1; margin: 0; font-size: 1.8rem; font-weight: 500; }
 .wl-modal-status { color: #aaa; font-size: 1.3rem; }
 
-.wl-modal-body { overflow-y: auto; padding: 8px 24px; }
+/* No top padding: a sticky heading pins to the scrollport edge, and any
+   padding there shows as a strip that scrolled items peek through. */
+.wl-modal-body { overflow-y: auto; padding: 0 24px 8px; }
 .wl-modal-footer {
   display: flex;
   flex-wrap: wrap;

@@ -70,8 +70,24 @@ const WLModal = {
     button.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>Organize`;
     button.addEventListener('click', () => onOpen());
 
-    document.body.appendChild(button);
+    const host = this.findTriggerHost();
+    if (host) {
+      button.classList.add('wl-trigger-inline');
+      host.appendChild(button);
+    } else {
+      document.body.appendChild(button);
+    }
     return true;
+  },
+
+  /** The chip row above the playlist items, or null when YouTube's markup has none. */
+  findTriggerHost() {
+    const hosts = (typeof SELECTORS !== 'undefined' && SELECTORS.TRIGGER_HOSTS) || [];
+    for (const selector of hosts) {
+      const el = document.querySelector(selector);
+      if (el) return el;
+    }
+    return null;
   },
 
   removeTrigger() {

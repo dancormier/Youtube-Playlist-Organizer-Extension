@@ -163,6 +163,7 @@ function fakeDocument() {
       children: [],
       _listeners: {},
       _focused: false,
+      classList: { add(name) { el.className = (el.className + ' ' + name).trim(); } },
       setAttribute() {},
       addEventListener(type, fn) { this._listeners[type] = fn; },
       focus() { this._focused = true; },
@@ -179,11 +180,18 @@ function fakeDocument() {
     _elements: elements, // exposed for test introspection only; not part of the real DOM API
     body: { appendChild(el) { elements.push(el); } },
     createElement(tag) { return makeElement(tag); },
+    _host: null, // set by a test to simulate YouTube's chip row being present
     querySelector(selector) {
       if (selector === '#wl-trigger') return elements.find(el => el.id === 'wl-trigger') ?? null;
+      if (this._host && selector === this._host._selector) return this._host;
       return null;
     },
   };
+}
+
+function fakeHost(selector) {
+  const host = { _selector: selector, children: [], appendChild(el) { this.children.push(el); } };
+  return host;
 }
 
 describe('WLModal.mountTrigger', () => {
@@ -207,6 +215,31 @@ describe('WLModal.mountTrigger', () => {
     document._elements[0]._listeners.click();
 
     assert.equal(opened, true);
+  });
+});
+
+describe('WLModal.mountTrigger placement', () => {
+  it('mounts inline in the first matching chip-row host', () => {
+    const document = fakeDocument();
+    const selector = 'ytd-playlist-video-list-renderer ytd-feed-filter-chip-bar-renderer #chips-wrapper';
+    document._host = fakeHost(selector);
+    const modal = loadGlobal('content/modal.js', 'WLModal', {
+      document, SELECTORS: { TRIGGER_HOSTS: ['nope', selector] },
+    });
+    modal.mountTrigger({ onOpen: () => {} });
+    assert.equal(document._host.children.length, 1);
+    assert.match(document._host.children[0].className, /wl-trigger-inline/);
+    assert.equal(document._elements.length, 0, 'not appended to body');
+  });
+
+  it('falls back to a floating button on body when no host matches', () => {
+    const document = fakeDocument();
+    const modal = loadGlobal('content/modal.js', 'WLModal', {
+      document, SELECTORS: { TRIGGER_HOSTS: ['nope'] },
+    });
+    modal.mountTrigger({ onOpen: () => {} });
+    assert.equal(document._elements.length, 1);
+    assert.doesNotMatch(document._elements[0].className, /wl-trigger-inline/);
   });
 });
 
