@@ -75,7 +75,14 @@ Only **Analyze & sort** needs any of this; **Sort by duration** works out of the
 5. **Categories** — one per line, top to bottom is the order groups appear in. **Reset to defaults** restores the built-in list.
 6. **Max new categories** — how many categories the model may invent when nothing on your list fits. `0` forces everything into your list (or **Other**).
 7. **Extra instructions** — free text passed to the model, e.g. "Keep cooking and baking separate".
-8. **Save**.
+8. **Sort** — three defaults for how **Analyze & sort** lays the playlist out. The preview shows the same three controls above the list; changing one there re-sorts instantly (no second model call) and becomes the new default.
+9. **Save**.
+
+| Sort option | Choices | Notes |
+|---|---|---|
+| Within a group | Shortest first (default), Longest first, Playlist order, Title A–Z | Playlist order keeps the videos exactly as they sit in the playlist today |
+| In-progress videos | Own group on top (default), Inside their category, Ignore watch progress | "Inside their category" puts started videos first within their group, least time left first; "Ignore" sorts them like any other video |
+| Group order | My category order (default), Largest group first, Alphabetical | **Other** is always the last group and **Unavailable** always comes after it, whichever you pick |
 
 ## Providers
 
