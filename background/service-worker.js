@@ -1,6 +1,8 @@
 // background/service-worker.js
-import { categorizeVideos } from '../lib/classify.js';
+import { categorizeVideos, listModels } from '../lib/classify.js';
 import { buildSortOrder, buildDurationSortOrder } from '../lib/sort.js';
+import { loadSettings, normalizeSettings } from '../lib/settings.js';
+import { getProvider } from '../lib/providers.js';
 
 // Switch icon to active (red) on YouTube, default (gray) elsewhere
 const ICON_DEFAULT = { 16: '/icons/icon16.png', 48: '/icons/icon48.png', 128: '/icons/icon128.png' };
@@ -52,20 +54,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.storage.local.get('sortState', (data) => sendResponse(data.sortState || null));
     return true;
   }
+
+  if (message.type === 'LIST_MODELS') {
+    handleListModels(message.settings).then(sendResponse);
+    return true;
+  }
 });
 
 async function handleAnalyze(videos, playlistId) {
   try {
-    const { apiKey } = await chrome.storage.sync.get('apiKey');
-    if (!apiKey) {
-      return { success: false, error: 'No API key configured. Open settings to add your Claude API key.' };
+    const settings = await loadSettings();
+    const provider = getProvider(settings.provider);
+    if (provider.needsKey && !settings.apiKey) {
+      return { success: false, error: "No API key configured. Open the extension's settings." };
     }
 
     const { unwatchedOverrides = [] } = await chrome.storage.local.get('unwatchedOverrides');
 
     const classifiable = videos.filter(v => !v.unavailable);
-    const clusters = await categorizeVideos(apiKey, classifiable);
-    const sortOrder = buildSortOrder(videos, clusters, unwatchedOverrides);
+    const clusters = await categorizeVideos(settings, classifiable);
+    const sortOrder = buildSortOrder(videos, clusters, unwatchedOverrides, settings.taxonomy);
 
     await chrome.storage.local.set({
       cachedClusters: { playlistId, clusters, videos },
@@ -78,7 +86,7 @@ async function handleAnalyze(videos, playlistId) {
   }
 }
 
-/** Re-sort using cached clusters. Never calls Claude — watch state does not change grouping. */
+/** Re-sort using cached clusters. Never calls the model — watch state does not change grouping. */
 async function handleResort(overrides, playlistId) {
   try {
     const { cachedClusters } = await chrome.storage.local.get('cachedClusters');
@@ -89,14 +97,25 @@ async function handleResort(overrides, playlistId) {
       return { success: false, error: 'Cached analysis belongs to a different playlist. Run Analyze again.' };
     }
 
+    const settings = await loadSettings();
     await chrome.storage.local.set({ unwatchedOverrides: overrides });
-    const sortOrder = buildSortOrder(cachedClusters.videos, cachedClusters.clusters, overrides);
+    const sortOrder = buildSortOrder(cachedClusters.videos, cachedClusters.clusters, overrides, settings.taxonomy);
 
     await chrome.storage.local.set({
       sortState: { videos: cachedClusters.videos, clusters: cachedClusters.clusters, sortOrder, timestamp: Date.now() },
     });
 
     return { success: true, sortOrder };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/** Uses the settings the popup sends, not the saved ones, so a key can be tried before saving. */
+async function handleListModels(rawSettings) {
+  try {
+    const models = await listModels(normalizeSettings(rawSettings));
+    return { success: true, models };
   } catch (err) {
     return { success: false, error: err.message };
   }

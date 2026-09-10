@@ -55,6 +55,7 @@ node -e "
 mkdir -p dist/chrome/background dist/chrome/lib
 cp background/service-worker.js dist/chrome/background/
 cp lib/providers.js dist/chrome/lib/
+cp lib/settings.js dist/chrome/lib/
 cp lib/classify.js dist/chrome/lib/
 cp lib/sort.js dist/chrome/lib/
 cp lib/taxonomy.js dist/chrome/lib/
@@ -68,7 +69,7 @@ node -e "
 " "$VERSION"
 # Firefox needs a bundled background script (no ES module support in background)
 mkdir -p dist/firefox/background
-cat lib/taxonomy.js lib/providers.js lib/sort.js lib/classify.js background/service-worker.js \
+cat lib/taxonomy.js lib/providers.js lib/settings.js lib/sort.js lib/classify.js background/service-worker.js \
   | sed 's/^export function/function/' \
   | sed 's/^export async function/async function/' \
   | sed 's/^export const/const/' \
