@@ -178,18 +178,24 @@ html[dark] .wl-trigger.wl-trigger-inline:hover { background: rgba(255, 255, 255,
   border-bottom: 1px solid #3f3f3f;
 }
 .wl-sort-options[hidden] { display: none; }
-/* One option per row: caption on the left, control on the right. */
+/* One option per row: a fixed-width caption, then the control right beside it. */
 .wl-sort-field,
 .wl-sort-check {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  justify-content: flex-start;
+  gap: 12px;
   min-height: 32px;
 }
-.wl-sort-label { color: #aaa; font-size: 1.3rem; }
+.wl-sort-label,
+.wl-sort-check > span {
+  flex: 0 0 130px;
+  color: #aaa;
+  font-size: 1.3rem;
+}
 .wl-sort-check {
   flex-direction: row-reverse;
+  justify-content: flex-end;
   color: #aaa;
   font-size: 1.3rem;
   cursor: pointer;
