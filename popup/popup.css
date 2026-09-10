@@ -86,7 +86,7 @@ body {
   gap: 8px;
   cursor: pointer;
 }
-.check-field input { width: auto; margin: 0; accent-color: #c00; }
+.settings-form .check-field input { width: auto; margin: 0; accent-color: #c00; }
 .settings-form input,
 .settings-form select,
 .settings-form textarea {
