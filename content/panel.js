@@ -375,4 +375,4 @@ onPageChange('load-time');
 // Firefox MV3 host permissions being opt-in — not a missed event path. Its
 // secondary job (remount if something removes the trigger) is already covered
 // by pageObserver, which fires on any mutation and calls syncTrigger. Removed
-// 2026-07-27; see docs/HANDOFF.md.
+// 2026-07-27; see ARCHITECTURE.md.

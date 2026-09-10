@@ -4,35 +4,10 @@ import { buildSortOrder, buildDurationSortOrder } from '../lib/sort.js';
 import { loadSettings, normalizeSettings } from '../lib/settings.js';
 import { getProvider } from '../lib/providers.js';
 
-// Switch icon to active (red) on YouTube, default (gray) elsewhere
-const ICON_DEFAULT = { 16: '/icons/icon16.png', 48: '/icons/icon48.png', 128: '/icons/icon128.png' };
+// The toolbar icon is per-tab: it turns red on tabs whose content script has
+// announced itself (YT_PAGE) and stays gray everywhere else, so no `tabs`
+// permission is needed to watch navigation.
 const ICON_ACTIVE = { 16: '/icons/active/icon16.png', 48: '/icons/active/icon48.png', 128: '/icons/active/icon128.png' };
-
-function updateIcon(tabId, url) {
-  const path = (url && url.includes('youtube.com')) ? ICON_ACTIVE : ICON_DEFAULT;
-  chrome.action.setIcon({ tabId, path }).catch(() => {});
-}
-
-// Update on navigation and tab switch
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.url || changeInfo.status === 'complete') {
-    updateIcon(tabId, tab.url);
-  }
-});
-
-chrome.tabs.onActivated.addListener(async ({ tabId }) => {
-  try {
-    const tab = await chrome.tabs.get(tabId);
-    updateIcon(tabId, tab.url);
-  } catch {}
-});
-
-// Update all existing tabs on service worker startup
-chrome.tabs.query({}, (tabs) => {
-  for (const tab of tabs) {
-    updateIcon(tab.id, tab.url);
-  }
-});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'ANALYZE') {
@@ -53,6 +28,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'GET_SORT_STATE') {
     chrome.storage.local.get('sortState', (data) => sendResponse(data.sortState || null));
     return true;
+  }
+
+  if (message.type === 'YT_PAGE') {
+    const tabId = sender?.tab?.id;
+    if (tabId !== undefined) chrome.action.setIcon({ tabId, path: ICON_ACTIVE }).catch(() => {});
+    return false;
   }
 
   if (message.type === 'LIST_MODELS') {

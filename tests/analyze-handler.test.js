@@ -20,11 +20,6 @@ function createChromeMock({ local = {}, sync = {} } = {}) {
 
   const chrome = {
     action: { setIcon: (args) => { iconCalls.push(args); return Promise.resolve(); } },
-    tabs: {
-      onUpdated: { addListener: () => {} },
-      onActivated: { addListener: () => {} },
-      query: (_queryInfo, cb) => cb([]),
-    },
     runtime: { onMessage: { addListener: (fn) => { messageListener = fn; } } },
     storage: {
       sync: {
@@ -163,5 +158,24 @@ describe('LIST_MODELS', () => {
     const response = await sendMessage(chrome, { type: 'LIST_MODELS', settings: { provider: 'openai', apiKey: '' } });
     assert.equal(response.success, false);
     assert.match(response.error, /no API key/);
+  });
+});
+
+describe('YT_PAGE', () => {
+  it('sets the active icon on the sending tab and answers synchronously', async () => {
+    const { chrome, iconCalls } = createChromeMock();
+    globalThis.chrome = chrome;
+    const keepAlive = getListener()({ type: 'YT_PAGE' }, { tab: { id: 42 } }, () => {});
+    assert.equal(keepAlive, false);
+    assert.equal(iconCalls.length, 1);
+    assert.equal(iconCalls[0].tabId, 42);
+    assert.match(iconCalls[0].path[16], /active/);
+  });
+
+  it('ignores a message with no tab', async () => {
+    const { chrome, iconCalls } = createChromeMock();
+    globalThis.chrome = chrome;
+    getListener()({ type: 'YT_PAGE' }, {}, () => {});
+    assert.equal(iconCalls.length, 0);
   });
 });

@@ -3,7 +3,7 @@
   "name": "YouTube Playlist Organizer",
   "version": "0.0.0",
   "description": "Automatically organize your YouTube Watch Later playlist using AI",
-  "permissions": ["storage", "activeTab", "tabs"],
+  "permissions": ["storage", "activeTab"],
   "host_permissions": ["https://www.youtube.com/*"],
   "background": {
     "service_worker": "background/service-worker.js",
@@ -12,7 +12,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.youtube.com/*"],
-      "js": ["content/selectors.js", "content/innertube.js", "content/playlist.js", "content/enrich.js", "content/storage.js", "content/modal.js", "content/headings.js", "content/panel.js"],
+      "js": ["content/announce.js", "content/selectors.js", "content/innertube.js", "content/playlist.js", "content/enrich.js", "content/storage.js", "content/modal.js", "content/headings.js", "content/panel.js"],
       "css": ["styles/content.css", "styles/panel.css", "styles/modal.css", "styles/headings.css"]
     }
   ],
