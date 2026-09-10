@@ -27,6 +27,10 @@ const WLInnerTube = {
       clientName: pick(/"INNERTUBE_CLIENT_NAME":"(.*?)"/) || 'WEB',
       clientVersion: pick(/"INNERTUBE_CLIENT_VERSION":"(.*?)"/),
       delegatedSessionId: pick(/"DELEGATED_SESSION_ID":"(.*?)"/),
+      // Which of the signed-in Google accounts this page belongs to. Every
+      // account in the profile shares the SAPISID cookie, so without this
+      // index InnerTube answers for account 0, the first one signed in.
+      sessionIndex: pick(/"SESSION_INDEX":"(\d+)"/) || '0',
     };
   },
 
@@ -111,7 +115,7 @@ const WLInnerTube = {
     const headers = {
       'Content-Type': 'application/json',
       'Authorization': auth,
-      'X-Goog-AuthUser': '0',
+      'X-Goog-AuthUser': config.sessionIndex || '0',
       'X-Youtube-Client-Name': '1',
       'X-Youtube-Client-Version': config.clientVersion || '',
     };

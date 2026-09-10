@@ -98,7 +98,7 @@ Your key is stored in the browser's extension sync storage and is only ever sent
 - **Playlists over ~2,000 videos are silently truncated.** Reading stops after 20 pages and the result looks complete.
 - **"Treat as unwatched" only affects sorting.** It cannot clear YouTube's red progress bar (see [ARCHITECTURE.md](ARCHITECTURE.md) for why).
 - **Titles and channel names are sent to the AI provider you configure**, on your key, at your cost.
-- **Multiple signed-in Google accounts are untested.**
+- **Several Google accounts in one browser profile:** the extension reads the account index from the page (`SESSION_INDEX`) and addresses that account. Brand/channel accounts go through `DELEGATED_SESSION_ID`. If a playlist ever shows another account's videos, open an issue with the account setup.
 - **Self-distributed Firefox builds do not auto-update.**
 
 ## Privacy
