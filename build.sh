@@ -13,6 +13,7 @@ mkdir -p dist/chrome dist/firefox
 
 # Shared files
 SHARED=(
+  content/announce.js
   content/selectors.js
   content/innertube.js
   content/playlist.js
@@ -36,6 +37,24 @@ SHARED=(
   icons/active/icon128.png
 )
 
+# The popup is a module script that imports from lib/, so lib/ ships in both
+# layouts even though Firefox's background gets a concatenated bundle instead.
+LIB=(
+  lib/taxonomy.js
+  lib/providers.js
+  lib/settings.js
+  lib/sort.js
+  lib/classify.js
+)
+
+copy_lib() {
+  local dest="$1"
+  mkdir -p "$dest/lib"
+  for file in "${LIB[@]}"; do
+    cp "$file" "$dest/$file"
+  done
+}
+
 copy_shared() {
   local dest="$1"
   for file in "${SHARED[@]}"; do
@@ -52,11 +71,9 @@ node -e "
   require('fs').writeFileSync('dist/chrome/manifest.json', JSON.stringify(m, null, 2));
 " "$VERSION"
 # Chrome uses ES module service worker — copy lib/ and background/ as-is
-mkdir -p dist/chrome/background dist/chrome/lib
+mkdir -p dist/chrome/background
 cp background/service-worker.js dist/chrome/background/
-cp lib/classify.js dist/chrome/lib/
-cp lib/sort.js dist/chrome/lib/
-cp lib/taxonomy.js dist/chrome/lib/
+copy_lib dist/chrome
 
 # ── Firefox ──
 copy_shared dist/firefox
@@ -65,9 +82,11 @@ node -e "
   m.version = process.argv[1];
   require('fs').writeFileSync('dist/firefox/manifest.json', JSON.stringify(m, null, 2));
 " "$VERSION"
-# Firefox needs a bundled background script (no ES module support in background)
+copy_lib dist/firefox
+# Firefox needs a bundled background script (no ES module support in background).
+# LIB is in dependency order, which is what the concatenation needs.
 mkdir -p dist/firefox/background
-cat lib/taxonomy.js lib/sort.js lib/classify.js background/service-worker.js \
+cat "${LIB[@]}" background/service-worker.js \
   | sed 's/^export function/function/' \
   | sed 's/^export async function/async function/' \
   | sed 's/^export const/const/' \

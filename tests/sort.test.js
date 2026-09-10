@@ -133,6 +133,34 @@ describe('buildSortOrder', () => {
   });
 });
 
+describe('buildSortOrder with a custom taxonomy', () => {
+  it('orders and canonicalises against the taxonomy passed in, not the default', () => {
+    const taxonomy = ['Woodwork', 'Knitting'];
+    const videos = [video({ id: 'k' }), video({ id: 'w' }), video({ id: 'm' })];
+    const order = buildSortOrder(videos, {
+      clusters: [
+        { name: 'knitting', videoIds: ['k'] },
+        { name: 'Woodwork', videoIds: ['w'] },
+        { name: 'Music', videoIds: ['m'] },
+      ],
+    }, [], taxonomy);
+
+    // Custom order first; Music is no longer a taxonomy name, so it sorts after.
+    assert.deepEqual(order.map(v => v.id), ['w', 'k', 'm']);
+    assert.equal(order[1].cluster, 'Knitting', 'folds onto the custom spelling');
+  });
+
+  it('ignores the reserved Other and Unavailable names so no video is emitted twice', () => {
+    // Regression: a user listing "Other" as a category made `ordered` contain it
+    // twice, and the sort order doubled every video in that group.
+    const videos = [video({ id: 'a' }), video({ id: 'b' }), video({ id: 'u', unavailable: true })];
+    const order = buildSortOrder(videos, {
+      clusters: [{ name: 'Other', videoIds: ['a', 'b'] }],
+    }, [], ['Music', 'Other', 'Unavailable']);
+    assert.deepEqual(order.map(v => v.id), ['a', 'b', 'u']);
+  });
+});
+
 describe('buildSortOrder cluster-name folding', () => {
   it('folds a differently-cased taxonomy name onto the taxonomy spelling', () => {
     // Regression: group identity is a plain string match, so "tech & ai" and

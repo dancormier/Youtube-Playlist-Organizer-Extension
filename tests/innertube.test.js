@@ -10,7 +10,8 @@ function load(sandbox = {}) {
 describe('WLInnerTube.parseConfig', () => {
   const source = `
     ytcfg.set({"INNERTUBE_API_KEY":"AIzaSyTEST","INNERTUBE_CLIENT_NAME":"WEB",
-    "INNERTUBE_CLIENT_VERSION":"2.20260724.01.01","DELEGATED_SESSION_ID":"sess123"});
+    "INNERTUBE_CLIENT_VERSION":"2.20260724.01.01","DELEGATED_SESSION_ID":"sess123",
+    "SESSION_INDEX":"2"});
   `;
 
   it('extracts every config field', () => {
@@ -19,6 +20,11 @@ describe('WLInnerTube.parseConfig', () => {
     assert.equal(config.clientName, 'WEB');
     assert.equal(config.clientVersion, '2.20260724.01.01');
     assert.equal(config.delegatedSessionId, 'sess123');
+    assert.equal(config.sessionIndex, '2');
+  });
+
+  it('defaults sessionIndex to 0 when the page does not state one', () => {
+    assert.equal(load().parseConfig('{"INNERTUBE_API_KEY":"k"}').sessionIndex, '0');
   });
 
   it('defaults clientName to WEB when absent', () => {
@@ -183,6 +189,20 @@ describe('WLInnerTube.call', () => {
     assert.match(seen.url, /youtubei\/v1\/browse\?key=K/);
     assert.match(seen.options.headers.Authorization, /^SAPISIDHASH \d+_[0-9a-f]{40}$/);
     assert.equal(seen.options.credentials, 'include');
+    assert.equal(seen.options.headers['X-Goog-AuthUser'], '0');
+  });
+
+  it('addresses the signed-in account the page belongs to, not account 0', async () => {
+    // Regression: a second Google account in the same profile saw the first
+    // account's Watch Later because X-Goog-AuthUser was hardcoded to 0.
+    let seen = null;
+    const api = apiWithFetch(async (url, options) => {
+      seen = options;
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+    api._config.sessionIndex = '1';
+    await api.call('browse', { browseId: 'VLWL' });
+    assert.equal(seen.headers['X-Goog-AuthUser'], '1');
   });
 
   it('merges the client context into the body', async () => {

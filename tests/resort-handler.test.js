@@ -16,11 +16,6 @@ function createChromeMock({ local = {}, sync = {} } = {}) {
 
   const chrome = {
     action: { setIcon: () => Promise.resolve() },
-    tabs: {
-      onUpdated: { addListener: () => {} },
-      onActivated: { addListener: () => {} },
-      query: (_queryInfo, cb) => cb([]),
-    },
     runtime: {
       onMessage: {
         addListener: (fn) => { messageListener = fn; },
@@ -57,7 +52,7 @@ function video(overrides = {}) {
 }
 
 // Import the module once with a bootstrap chrome mock in place (top-level code in
-// service-worker.js calls chrome.tabs.* immediately on load).
+// service-worker.js registers the message listener immediately on load).
 let getListener;
 before(async () => {
   const bootstrap = createChromeMock();
