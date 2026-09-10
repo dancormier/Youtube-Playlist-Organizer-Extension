@@ -242,6 +242,11 @@ describe('normalizeSortOptions', () => {
     assert.deepEqual(s, { withinGroup: 'title', inProgress: 'top', groupOrder: 'alpha' });
   });
 
+  it('maps the retired inProgress "ignore" onto "within" rather than the default', () => {
+    assert.equal(normalizeSortOptions({ inProgress: 'ignore' }).inProgress, 'within');
+    assert.equal(SORT_CHOICES.inProgress.some(c => c.value === 'ignore'), false, 'no longer offered');
+  });
+
   it('accepts every value SORT_CHOICES offers', () => {
     for (const [key, choices] of Object.entries(SORT_CHOICES)) {
       for (const { value } of choices) assert.equal(normalizeSortOptions({ [key]: value })[key], value);
@@ -338,13 +343,13 @@ describe('buildSortOrder options: inProgress', () => {
     assert.deepEqual(desc.map(v => v.id), ['m3', 'm1', 'm2', 'm4', 't2', 't1'], 'started pair unchanged, tail reversed');
   });
 
-  it('ignore sorts started videos like any other and produces no null cluster', () => {
-    const order = buildSortOrder(videos, clusters, [], undefined, { inProgress: 'ignore' });
-    assert.deepEqual(order.map(v => v.id), ['m2', 'm1', 'm3', 't2', 't1']);
-    assert.equal(order.some(v => v.cluster === null), false);
+  it('the retired ignore value behaves as within', () => {
+    const legacy = buildSortOrder(videos, clusters, [], undefined, { inProgress: 'ignore' });
+    const within = buildSortOrder(videos, clusters, [], undefined, { inProgress: 'within' });
+    assert.deepEqual(legacy.map(v => v.id), within.map(v => v.id));
   });
 
-  it('within and ignore still respect overrides for the started flag', () => {
+  it('within still respects overrides for the started flag', () => {
     const order = buildSortOrder(videos, clusters, ['m3'], undefined, { inProgress: 'within' });
     assert.deepEqual(order.map(v => v.id), ['m1', 'm2', 'm3', 't2', 't1']);
     assert.equal(order.find(v => v.id === 'm3').inProgress, false);

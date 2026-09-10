@@ -131,14 +131,14 @@ describe('RESORT sort options', () => {
   it('uses settings.sort when the message carries no sortOptions, and echoes what it used', async () => {
     const { chrome, localStore } = createChromeMock({
       local: { cachedClusters: cache() },
-      sync: { settings: { provider: 'ollama', sort: { withinGroup: 'duration-desc', inProgress: 'ignore' } } },
+      sync: { settings: { provider: 'ollama', sort: { withinGroup: 'duration-desc', inProgress: 'within' } } },
     });
 
     const response = await sendMessage(chrome, { type: 'RESORT', overrides: [], playlistId: 'WL' });
 
     assert.equal(response.success, true, response.error);
-    assert.deepEqual(response.sortOrder.map(v => v.id), ['b', 'c', 'a']);
-    assert.deepEqual(response.sortOptions, { withinGroup: 'duration-desc', inProgress: 'ignore', groupOrder: 'taxonomy' });
+    assert.deepEqual(response.sortOrder.map(v => v.id), ['a', 'b', 'c']);
+    assert.deepEqual(response.sortOptions, { withinGroup: 'duration-desc', inProgress: 'within', groupOrder: 'taxonomy' });
     assert.equal(localStore.cachedClusters.sortOptions, undefined, 'a resort never rewrites the cluster cache');
     assert.deepEqual(localStore.sortState.sortOptions, response.sortOptions);
   });

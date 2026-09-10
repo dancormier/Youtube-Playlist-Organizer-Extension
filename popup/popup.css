@@ -80,6 +80,13 @@ body {
   font-size: 12px;
   color: #aaa;
 }
+.check-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.check-field input { width: auto; margin: 0; accent-color: #c00; }
 .settings-form input,
 .settings-form select,
 .settings-form textarea {

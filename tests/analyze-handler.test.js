@@ -191,14 +191,14 @@ describe('ANALYZE sort options', () => {
   it('sorts with settings.sort by default and caches the options for RESORT', async () => {
     stubFetch(reply);
     const { chrome, localStore } = createChromeMock({
-      sync: { settings: { provider: 'ollama', sort: { inProgress: 'ignore', withinGroup: 'duration-desc' } } },
+      sync: { settings: { provider: 'ollama', sort: { inProgress: 'within', withinGroup: 'duration-desc' } } },
     });
 
     const response = await sendMessage(chrome, { type: 'ANALYZE', videos, playlistId: 'WL' });
 
     assert.equal(response.success, true, response.error);
-    assert.deepEqual(response.sortOrder.map(v => v.id), ['b', 'c', 'a']);
-    assert.deepEqual(response.sortOptions, { withinGroup: 'duration-desc', inProgress: 'ignore', groupOrder: 'taxonomy' });
+    assert.deepEqual(response.sortOrder.map(v => v.id), ['a', 'b', 'c']);
+    assert.deepEqual(response.sortOptions, { withinGroup: 'duration-desc', inProgress: 'within', groupOrder: 'taxonomy' });
     assert.equal(localStore.cachedClusters.sortOptions, undefined, 'options live in sortState only');
     assert.deepEqual(localStore.sortState.sortOptions, response.sortOptions);
   });
@@ -206,7 +206,7 @@ describe('ANALYZE sort options', () => {
   it('prefers sortOptions carried by the message', async () => {
     stubFetch(reply);
     const { chrome } = createChromeMock({
-      sync: { settings: { provider: 'ollama', sort: { inProgress: 'ignore' } } },
+      sync: { settings: { provider: 'ollama', sort: { inProgress: 'within' } } },
     });
 
     const response = await sendMessage(chrome, {

@@ -17,7 +17,6 @@ const WLModal = {
     inProgress: [
       { value: 'top', label: 'Own group on top' },
       { value: 'within', label: 'Inside their category' },
-      { value: 'ignore', label: 'Ignore watch progress' },
     ],
     groupOrder: [
       { value: 'taxonomy', label: 'My category order' },
@@ -27,9 +26,12 @@ const WLModal = {
   },
   SORT_FIELD_LABELS: {
     withinGroup: 'Within a group',
-    inProgress: 'In progress',
+    inProgress: 'Started videos on top',
     groupOrder: 'Group order',
   },
+  // inProgress has exactly two values, so it renders as a checkbox: checked is
+  // 'top', unchecked is 'within'.
+  SORT_CHECKBOX_VALUES: { inProgress: { on: 'top', off: 'within' } },
 
   _root: null,
   _lastFocused: null,
@@ -336,10 +338,10 @@ const WLModal = {
 
     this._cancellable = true;
 
-    // A re-render triggered by one of the selects must not steal focus from it:
+    // A re-render triggered by one of the controls must not steal focus from it:
     // arrow keys on a focused <select> fire `change` per step in Firefox, and
     // jumping to Apply after each would strand a keyboard user.
-    const focusedSelect = document.activeElement?.getAttribute?.('data-wl-sort') ?? null;
+    const focusedControl = document.activeElement?.getAttribute?.('data-wl-sort') ?? null;
 
     this.setStatus('');
     body.textContent = '';
@@ -372,8 +374,8 @@ const WLModal = {
     cancel.addEventListener('click', () => this._cancel());
 
     footer.append(apply, cancel);
-    const restore = focusedSelect
-      ? body.querySelector?.(`[data-wl-sort="${focusedSelect}"]`)
+    const restore = focusedControl
+      ? body.querySelector?.(`[data-wl-sort="${focusedControl}"]`)
       : null;
     (restore || apply).focus();
   },
@@ -381,12 +383,42 @@ const WLModal = {
   _renderSortOptions(sortOptions) {
     const row = document.createElement('div');
     row.className = 'wl-sort-options';
-    const selects = [];
+    const controls = [];
+
+    const valueOf = (control) => {
+      const key = control.getAttribute('data-wl-sort');
+      const toggle = this.SORT_CHECKBOX_VALUES[key];
+      if (toggle) return control.checked ? toggle.on : toggle.off;
+      return control.value || sortOptions[key];
+    };
+    // Read every control live: two quick changes before the first re-sort
+    // returns must not revert each other through a render-time snapshot.
+    const emit = () => {
+      const current = {};
+      for (const control of controls) current[control.getAttribute('data-wl-sort')] = valueOf(control);
+      this._handlers.onSortOptionsChange?.(current);
+    };
 
     for (const [key, choices] of Object.entries(this.SORT_CHOICES)) {
       const field = document.createElement('label');
-      field.className = 'wl-sort-field';
+      const toggle = this.SORT_CHECKBOX_VALUES[key];
 
+      if (toggle) {
+        field.className = 'wl-sort-check';
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.setAttribute('data-wl-sort', key);
+        box.checked = sortOptions[key] === toggle.on;
+        box.addEventListener('change', emit);
+        controls.push(box);
+        const caption = document.createElement('span');
+        caption.textContent = this.SORT_FIELD_LABELS[key];
+        field.append(box, caption);
+        row.appendChild(field);
+        continue;
+      }
+
+      field.className = 'wl-sort-field';
       const caption = document.createElement('span');
       caption.className = 'wl-sort-label';
       caption.textContent = this.SORT_FIELD_LABELS[key];
@@ -401,17 +433,8 @@ const WLModal = {
         option.selected = value === sortOptions[key];
         select.appendChild(option);
       }
-      selects.push(select);
-      // Read every select live: two quick changes before the first re-sort
-      // returns must not revert each other through a render-time snapshot.
-      select.addEventListener('change', () => {
-        const current = {};
-        for (const s of selects) {
-          const k = s.getAttribute('data-wl-sort');
-          current[k] = s.value || sortOptions[k];
-        }
-        this._handlers.onSortOptionsChange?.(current);
-      });
+      select.addEventListener('change', emit);
+      controls.push(select);
 
       field.append(caption, select);
       row.appendChild(field);

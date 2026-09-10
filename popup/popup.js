@@ -60,9 +60,10 @@ const els = {
   extra: $('#extra'),
   sort: {
     withinGroup: $('#sort-within-group'),
-    inProgress: $('#sort-in-progress'),
     groupOrder: $('#sort-group-order'),
   },
+  // Two-valued, so a checkbox: checked is 'top', unchecked is 'within'.
+  sortInProgress: $('#sort-in-progress'),
   save: $('#save-btn'),
   status: $('#status'),
 };
@@ -118,7 +119,10 @@ function formSettings() {
     taxonomy: els.taxonomy.value.split('\n'),
     maxNewCategories: els.maxNew.value,
     extraInstructions: els.extra.value,
-    sort: Object.fromEntries(Object.entries(els.sort).map(([key, el]) => [key, el.value])),
+    sort: {
+      ...Object.fromEntries(Object.entries(els.sort).map(([key, el]) => [key, el.value])),
+      inProgress: els.sortInProgress.checked ? 'top' : 'within',
+    },
   };
 }
 
@@ -143,6 +147,7 @@ function render(settings) {
   els.maxNew.value = settings.maxNewCategories;
   els.extra.value = settings.extraInstructions;
   for (const [key, el] of Object.entries(els.sort)) el.value = settings.sort[key];
+  els.sortInProgress.checked = settings.sort.inProgress === 'top';
 }
 
 for (const p of PROVIDERS) {

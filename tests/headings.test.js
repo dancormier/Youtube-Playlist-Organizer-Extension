@@ -629,8 +629,8 @@ describe('WLHeadings.inject drift repair', () => {
 });
 
 describe('WLHeadings.boundariesFrom against real sort output', () => {
-  // With inProgress 'within' or 'ignore' the sorter emits no null cluster, so no
-  // In Progress heading must appear and started videos count toward their group.
+  // With inProgress 'within' the sorter emits no null cluster, so no In Progress
+  // heading must appear and started videos count toward their group.
   const clusters = { clusters: [{ name: 'Music', videoIds: ['a', 'b'] }] };
   const videos = [
     { id: 'a', title: 'A', duration: 600, percentWatched: 50, unavailable: false },
@@ -645,9 +645,7 @@ describe('WLHeadings.boundariesFrom against real sort output', () => {
       { videoId: 'b', name: 'Music', count: 1 },
     ]);
 
-    for (const inProgress of ['within', 'ignore']) {
-      const boundaries = headings.boundariesFrom(buildSortOrder(videos, clusters, [], undefined, { inProgress }));
-      assert.deepEqual([...boundaries].map(b => ({ ...b })), [{ videoId: 'a', name: 'Music', count: 2 }], inProgress);
-    }
+    const within = headings.boundariesFrom(buildSortOrder(videos, clusters, [], undefined, { inProgress: 'within' }));
+    assert.deepEqual([...within].map(b => ({ ...b })), [{ videoId: 'a', name: 'Music', count: 2 }]);
   });
 });

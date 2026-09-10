@@ -172,6 +172,9 @@ describe('WLModal.showModes', () => {
   });
 });
 
+/** The control (select or checkbox) carrying data-wl-sort inside a rendered field. */
+const controlIn = (field) => field.children.find(el => el.getAttribute('data-wl-sort') !== null);
+
 function previewWith({ sortOrder = [], sortOptions = null, handlers = {}, activeSortKey = null } = {}) {
   const { make, document } = fakeUi();
   const activeElement = activeSortKey
@@ -183,7 +186,7 @@ function previewWith({ sortOrder = [], sortOptions = null, handlers = {}, active
   body.querySelector = (selector) => {
     const match = /\[data-wl-sort="(\w+)"\]/.exec(selector);
     const row = body.children.find(el => el.className === 'wl-sort-options');
-    return row?.children.map(f => f.children[1]).find(sel => sel.getAttribute('data-wl-sort') === match?.[1]) ?? null;
+    return row?.children.map(controlIn).find(c => c.getAttribute('data-wl-sort') === match?.[1]) ?? null;
   };
   const footer = make('div');
   modal._body = () => body;
@@ -191,8 +194,10 @@ function previewWith({ sortOrder = [], sortOptions = null, handlers = {}, active
   modal._handlers = handlers;
   modal.showPreview(sortOrder, sortOptions);
   const row = body.children.find(el => el.className === 'wl-sort-options') ?? null;
-  const selects = row ? row.children.map(field => field.children[1]) : [];
-  return { modal, body, footer, row, selects };
+  const controls = row ? row.children.map(controlIn) : [];
+  const selects = controls.filter(c => c.tagName === 'select');
+  const checkbox = controls.find(c => c.tagName === 'input') ?? null;
+  return { modal, body, footer, row, controls, selects, checkbox };
 }
 
 describe('WLModal.showPreview sort options', () => {
@@ -204,16 +209,44 @@ describe('WLModal.showPreview sort options', () => {
     assert.equal(body.children[0].className, 'wl-group-heading');
   });
 
-  it('renders one labelled select per option, above the list, with the current value selected', () => {
-    const { body, row, selects } = previewWith({ sortOrder: [video({ id: 'a' })], sortOptions: options });
+  it('renders one labelled control per option, above the list, with the current value selected', () => {
+    const { body, row, controls, selects, checkbox } = previewWith({ sortOrder: [video({ id: 'a' })], sortOptions: options });
     assert.equal(body.children[0], row, 'the row comes before the first heading');
     assert.deepEqual(row.children.map(f => f.tagName), ['label', 'label', 'label']);
-    assert.deepEqual(selects.map(s => s.getAttribute('data-wl-sort')), ['withinGroup', 'inProgress', 'groupOrder']);
+    assert.deepEqual(controls.map(c => c.getAttribute('data-wl-sort')), ['withinGroup', 'inProgress', 'groupOrder']);
+    assert.deepEqual(selects.map(s => s.getAttribute('data-wl-sort')), ['withinGroup', 'groupOrder']);
     for (const select of selects) {
       const key = select.getAttribute('data-wl-sort');
       assert.deepEqual(select.children.map(o => o.value), SORT_CHOICES[key].map(c => c.value));
       assert.deepEqual(select.children.filter(o => o.selected).map(o => o.value), [options[key]]);
     }
+    assert.equal(checkbox.type, 'checkbox');
+    assert.equal(checkbox.getAttribute('data-wl-sort'), 'inProgress');
+    assert.equal(checkbox.checked, false, "'within' renders unchecked");
+  });
+
+  it('renders the checkbox checked for inProgress top, inside a wl-sort-check label', () => {
+    const { row, checkbox } = previewWith({ sortOptions: { ...options, inProgress: 'top' } });
+    assert.equal(checkbox.checked, true);
+    const field = row.children.find(f => f.className === 'wl-sort-check');
+    assert.equal(field.children[0], checkbox);
+    assert.equal(field.children[1].textContent, 'Started videos on top');
+  });
+
+  it('toggling the checkbox emits top when checked and within when unchecked', () => {
+    const emitted = [];
+    const { checkbox } = previewWith({
+      sortOptions: options,
+      handlers: { onSortOptionsChange: (next) => emitted.push(next) },
+    });
+    checkbox.checked = true;
+    checkbox._listeners.change();
+    checkbox.checked = false;
+    checkbox._listeners.change();
+    assert.deepEqual(emitted.map(o => ({ ...o })), [
+      { withinGroup: 'title', inProgress: 'top', groupOrder: 'alpha' },
+      { withinGroup: 'title', inProgress: 'within', groupOrder: 'alpha' },
+    ]);
   });
 
   it('a change emits the full option set with only that key replaced', () => {
@@ -250,7 +283,7 @@ describe('WLModal.showPreview sort options', () => {
     assert.doesNotThrow(() => selects[0]._listeners.change());
   });
 
-  it('focuses Apply normally, but the select that triggered a re-render keeps focus', () => {
+  it('focuses Apply normally, but the control that triggered a re-render keeps focus', () => {
     const focusedWith = (activeSortKey) => {
       const focused = [];
       const { make, document } = fakeUi();
@@ -258,19 +291,24 @@ describe('WLModal.showPreview sort options', () => {
       if (activeSortKey) document.activeElement = { getAttribute: (k) => (k === 'data-wl-sort' ? activeSortKey : null) };
       const modal = loadGlobal('content/modal.js', 'WLModal', { document });
       const body = make('div');
-      body.querySelector = () => body.children[0].children[1].children[1];
+      const byKey = (key) => body.children[0].children.map(controlIn).find(c => c.getAttribute('data-wl-sort') === key);
+      body.querySelector = (selector) => byKey(/"(\w+)"/.exec(selector)[1]);
       const footer = make('div');
       modal._body = () => body;
       modal._footer = () => footer;
       modal.showPreview([], options);
-      return { focused, apply: footer.children[0], inProgressSelect: body.children[0].children[1].children[1] };
+      return { focused, apply: footer.children[0], byKey };
     };
 
     const plain = focusedWith(null);
     assert.deepEqual(plain.focused, [plain.apply]);
 
-    const rerender = focusedWith('inProgress');
-    assert.deepEqual(rerender.focused, [rerender.inProgressSelect]);
+    const select = focusedWith('groupOrder');
+    assert.deepEqual(select.focused, [select.byKey('groupOrder')]);
+
+    const checkbox = focusedWith('inProgress');
+    assert.equal(checkbox.byKey('inProgress').tagName, 'input');
+    assert.deepEqual(checkbox.focused, [checkbox.byKey('inProgress')]);
   });
 });
 
