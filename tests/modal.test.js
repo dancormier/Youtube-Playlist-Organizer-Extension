@@ -163,7 +163,10 @@ function fakeDocument() {
       children: [],
       _listeners: {},
       _focused: false,
-      classList: { add(name) { el.className = (el.className + ' ' + name).trim(); } },
+      classList: {
+        add(name) { if (!this.contains(name)) el.className = (el.className + ' ' + name).trim(); },
+        contains(name) { return el.className.split(/\s+/).includes(name); },
+      },
       setAttribute() {},
       addEventListener(type, fn) { this._listeners[type] = fn; },
       focus() { this._focused = true; },
@@ -230,6 +233,20 @@ describe('WLModal.mountTrigger placement', () => {
     assert.equal(document._host.children.length, 1);
     assert.match(document._host.children[0].className, /wl-trigger-inline/);
     assert.equal(document._elements.length, 0, 'not appended to body');
+  });
+
+  it('moves a floating trigger into the chip row once the row appears', () => {
+    const document = fakeDocument();
+    const selector = 'chip-bar-view-model .ytChipBarViewModelChipBarScrollContainer';
+    const modal = loadGlobal('content/modal.js', 'WLModal', {
+      document, SELECTORS: { TRIGGER_HOSTS: [selector] },
+    });
+    assert.equal(modal.mountTrigger({ onOpen: () => {} }), true);
+    assert.equal(document._elements.length, 1, 'floating first');
+    document._host = fakeHost(selector);
+    assert.equal(modal.mountTrigger({ onOpen: () => {} }), false, 'no second button');
+    assert.equal(document._host.children.length, 1, 'moved into the row');
+    assert.match(document._host.children[0].className, /wl-trigger-inline/);
   });
 
   it('mounts in the parent of a { parentOf } match', () => {

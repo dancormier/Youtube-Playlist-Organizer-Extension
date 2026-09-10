@@ -8,10 +8,11 @@ const SELECTORS = {
   // Where the Organize button lives, first match wins: the playlist's own
   // filter-chip row (Manual ▾ / All / Videos / Shorts). None present → floating.
   // A string selects the host itself; { parentOf } selects the parent of the
-  // first match, for rows whose container has no id or tag of its own
-  // (the 2026 chip bar: chip-view-model < div < div < chip-bar-view-model).
+  // first match. The 2026 chip bar (chip-bar-view-model) keeps its chips in a
+  // role=tablist scroll container, each chip in its own wrapper div.
   TRIGGER_HOSTS: [
-    { parentOf: 'chip-bar-view-model chip-view-model' },
+    'chip-bar-view-model .ytChipBarViewModelChipBarScrollContainer',
+    'chip-bar-view-model [role="tablist"]',
     'ytd-feed-filter-chip-bar-renderer #chips-wrapper',
     'yt-chip-cloud-renderer #chips',
   ],

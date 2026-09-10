@@ -60,7 +60,17 @@ const WLModal = {
    * @returns {boolean} true when it created the element, false when one already existed.
    */
   mountTrigger({ onOpen }) {
-    if (document.querySelector('#wl-trigger')) return false;
+    const existing = document.querySelector('#wl-trigger');
+    const host = this.findTriggerHost();
+    if (existing) {
+      // YouTube renders the chip row after the page is otherwise ready, so a
+      // trigger that mounted floating moves into the row once it exists.
+      if (host && !existing.classList.contains('wl-trigger-inline')) {
+        existing.classList.add('wl-trigger-inline');
+        host.appendChild(existing);
+      }
+      return false;
+    }
 
     const button = document.createElement('button');
     button.id = 'wl-trigger';
@@ -70,7 +80,6 @@ const WLModal = {
     button.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>Organize`;
     button.addEventListener('click', () => onOpen());
 
-    const host = this.findTriggerHost();
     if (host) {
       button.classList.add('wl-trigger-inline');
       host.appendChild(button);
