@@ -30,7 +30,11 @@
    as an action, and separated from the filter chips by a vertical rule. */
 .wl-trigger.wl-trigger-inline {
   position: relative;
+  right: auto;
+  bottom: auto;
+  z-index: auto;
   flex-shrink: 0;
+  vertical-align: middle;
   height: 32px;
   margin-left: 12px;
   padding: 0 12px;
