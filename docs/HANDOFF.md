@@ -107,14 +107,14 @@ background/
 
 ## ~~OPEN ISSUE 1~~ — RESOLVED 2026-07-27
 
-**Confirmed by Dan:** granting **Always Allow on www.youtube.com** in Firefox's extensions menu makes the trigger mount normally on a fresh tab. The permissions theory below was correct. This was never an extension bug.
+**Confirmed:** granting **Always Allow on www.youtube.com** in Firefox's extensions menu makes the trigger mount normally on a fresh tab. The permissions theory below was correct. This was never an extension bug.
 
 **What was done:**
 
 - `popup/popup.{html,js,css}` — on open, the popup calls `permissions.contains({origins:['https://www.youtube.com/*']})`. If not granted, it shows a banner with a **Grant access to YouTube** button that calls `permissions.request()`. On success the banner becomes "Granted. Reload any open YouTube tabs." — the grant does *not* retro-inject into already-open tabs. Chrome grants `host_permissions` at install, so `contains()` returns true there and the banner never renders.
 - `content/panel.js` — the 20s polling backstop was **removed**. It was diagnostic scaffolding for a cause that turned out to be elsewhere, and its secondary job (remount if the trigger is removed) is already covered by `pageObserver`.
 
-**The popup rewrite is off the table.** Dan's fallback plan — moving all functionality into the toolbar popup — is no longer needed and should not be started.
+**The popup rewrite is off the table.** The fallback plan — moving all functionality into the toolbar popup — is no longer needed and should not be started.
 
 **Not done, deliberately:** `scripting.registerContentScripts()` after the grant, which would inject into already-open tabs without a reload. More moving parts for a one-time-ever event. Revisit only if the reload step proves annoying.
 
@@ -140,7 +140,7 @@ Nothing logs until the click. Then the script loads and mounts correctly **on it
 - **If the trigger appears** → confirmed. The fix is either documenting the one-time grant, or calling `permissions.request()` from the popup on first run. No redesign needed.
 - **If it still doesn't** → the permissions theory is wrong and this needs fresh investigation. The instrumentation is already in place and quiet.
 
-**Dan's proposed fallback, if it can't be fixed:** move all functionality into the toolbar popup — the popup becomes the whole UI (mode choice, preview, apply), so clicking the button is what starts everything. He has explicitly said he's fine with this, including headings only appearing after a click. **Do not start this without confirming the permissions test failed** — it's a large rewrite to work around what may be one toggle.
+**Proposed fallback, if it can't be fixed:** move all functionality into the toolbar popup — the popup becomes the whole UI (mode choice, preview, apply), so clicking the button is what starts everything. Headings only appearing after a click would be acceptable. **Do not start this without confirming the permissions test failed** — it's a large rewrite to work around what may be one toggle.
 
 **Note:** the current build has a **bounded 20s backstop** that mounts the trigger if the normal event paths don't fire, and `console.warn`s when it acts. It is diagnostic scaffolding. Once the root cause is settled, decide whether to keep or remove it.
 
@@ -148,7 +148,7 @@ Nothing logs until the click. Then the script loads and mounts correctly **on it
 
 ---
 
-## ~~OPEN ISSUE 2~~ — RESOLVED 2026-07-27, verified by Dan
+## ~~OPEN ISSUE 2~~ — RESOLVED 2026-07-27, verified in Firefox
 
 Injected headings broke YouTube's drag-to-reorder. **Cause measured, not guessed.**
 
@@ -185,7 +185,7 @@ Headings now align with the video thumbnails via `left: 36px` on `.wl-playlist-h
 
 Four tests in `tests/playlist.test.js` cover the matrix (`isPlayable:false` + real title, falsy title + field absent, `isPlayable:true` + normal title, field absent + normal title). The last two assert the field really is absent from the fixture first, so a later edit to the shared fixture can't silently gut the case they exist to catch.
 
-**Verified 2026-07-27** by Dan against a playlist containing a real unavailable video.
+**Verified 2026-07-27** against a playlist containing a real unavailable video.
 
 ---
 
