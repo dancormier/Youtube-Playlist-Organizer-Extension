@@ -234,7 +234,13 @@ describe('WLModal.showPreview sort options', () => {
 
   it('renders one labelled control per option, above the list, with the current value selected', () => {
     const { body, row, controls, selects, checkbox } = previewWith({ sortOrder: [video({ id: 'a' })], sortOptions: options });
-    assert.equal(body.children[0], row, 'the row comes before the first heading');
+    assert.equal(body.children[0].className, 'wl-sort-toggle', 'a show/hide toggle comes first');
+    assert.equal(body.children[0].getAttribute('aria-expanded'), 'false', 'collapsed by default');
+    assert.equal(body.children[1], row, 'the row comes before the first heading');
+    assert.equal(row.hidden, true);
+    body.children[0]._listeners.click();
+    assert.equal(row.hidden, false);
+    assert.equal(body.children[0].getAttribute('aria-expanded'), 'true');
     assert.deepEqual(row.children.map(f => f.tagName), ['label', 'label', 'label']);
     assert.deepEqual(controls.map(c => c.getAttribute('data-wl-sort')), ['withinGroup', 'inProgress', 'groupOrder']);
     assert.deepEqual(selects.map(s => s.getAttribute('data-wl-sort')), ['withinGroup', 'groupOrder']);
@@ -253,7 +259,7 @@ describe('WLModal.showPreview sort options', () => {
     assert.equal(checkbox.checked, true);
     const field = row.children.find(f => f.className === 'wl-sort-check');
     assert.equal(field.children[0], checkbox);
-    assert.equal(field.children[1].textContent, 'Started videos on top');
+    assert.equal(field.children[1].textContent, 'Group in progress');
   });
 
   it('toggling the checkbox emits top when checked and within when unchecked', () => {
@@ -314,7 +320,7 @@ describe('WLModal.showPreview sort options', () => {
       if (activeSortKey) document.activeElement = { getAttribute: (k) => (k === 'data-wl-sort' ? activeSortKey : null) };
       const modal = loadGlobal('content/modal.js', 'WLModal', { document, WLHeadings: realHeadings() });
       const body = make('div');
-      const byKey = (key) => body.children[0].children.map(controlIn).find(c => c.getAttribute('data-wl-sort') === key);
+      const byKey = (key) => body.children[1].children.map(controlIn).find(c => c.getAttribute('data-wl-sort') === key);
       body.querySelector = (selector) => byKey(/"(\w+)"/.exec(selector)[1]);
       const footer = make('div');
       modal._body = () => body;

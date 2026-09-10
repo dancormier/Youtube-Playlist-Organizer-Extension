@@ -27,12 +27,15 @@ const WLModal = {
   },
   SORT_FIELD_LABELS: {
     withinGroup: 'Within a group',
-    inProgress: 'Started videos on top',
+    inProgress: 'Group in progress',
     groupOrder: 'Group order',
   },
   // inProgress has exactly two values, so it renders as a checkbox: checked is
   // 'top', unchecked is 'within'.
   SORT_CHECKBOX_VALUES: { inProgress: { on: 'top', off: 'within' } },
+  // Collapsed by default; remembered for the life of the page so a re-render
+  // after a change does not fold the panel the user just opened.
+  _sortOptionsOpen: false,
 
   _root: null,
   _lastFocused: null,
@@ -348,7 +351,22 @@ const WLModal = {
     body.textContent = '';
     footer.textContent = '';
 
-    if (sortOptions) body.appendChild(this._renderSortOptions(sortOptions));
+    if (sortOptions) {
+      const row = this._renderSortOptions(sortOptions);
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'wl-sort-toggle';
+      toggle.setAttribute('data-wl-sort', 'toggle');
+      toggle.setAttribute('aria-expanded', String(this._sortOptionsOpen));
+      toggle.innerHTML = `<span>Sort options</span><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.707 8.793a1 1 0 00-1.414 0L12 14.086 6.707 8.793a1 1 0 10-1.414 1.414L12 16.914l6.707-6.707a1 1 0 000-1.414Z"/></svg>`;
+      row.hidden = !this._sortOptionsOpen;
+      toggle.addEventListener('click', () => {
+        this._sortOptionsOpen = !this._sortOptionsOpen;
+        row.hidden = !this._sortOptionsOpen;
+        toggle.setAttribute('aria-expanded', String(this._sortOptionsOpen));
+      });
+      body.append(toggle, row);
+    }
 
     for (const group of this.toGroups(sortOrder)) {
       if (group.name !== null) {
