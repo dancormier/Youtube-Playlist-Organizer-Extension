@@ -36,7 +36,7 @@
   flex-shrink: 0;
   vertical-align: middle;
   height: 32px;
-  margin-left: 12px;
+  margin-left: 14px;
   padding: 0 12px;
   border: none;
   border-radius: 8px;
@@ -50,7 +50,7 @@
 .wl-trigger.wl-trigger-inline::before {
   content: '';
   position: absolute;
-  left: -13px;
+  left: -11.5px;
   top: 4px;
   width: 1px;
   height: 24px;
