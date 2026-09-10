@@ -215,6 +215,14 @@ html[dark] .wl-trigger.wl-trigger-inline:hover { background: rgba(255, 255, 255,
   color: #69b3ff;
 }
 .wl-group-heading.wl-in-progress { color: #ff8a80; }
+.wl-group-heading .wl-group-meta {
+  margin-left: 10px;
+  color: #aaa;
+  font-size: 1.2rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
 
 .wl-modal-item {
   display: flex;

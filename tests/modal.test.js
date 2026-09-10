@@ -5,6 +5,10 @@ import { loadGlobal } from './helpers/load-global.js';
 import { SORT_CHOICES } from '../lib/sort.js';
 
 const load = () => loadGlobal('content/modal.js', 'WLModal', { document: undefined });
+// showPreview reads WLHeadings at click time for the per-group unwatched total.
+const realHeadings = () => loadGlobal('content/headings.js', 'WLHeadings', {
+  document: undefined, MutationObserver: class { observe() {} disconnect() {} },
+});
 
 function video(overrides = {}) {
   return {
@@ -181,7 +185,7 @@ function previewWith({ sortOrder = [], sortOptions = null, handlers = {}, active
     ? { getAttribute: (k) => (k === 'data-wl-sort' ? activeSortKey : null) }
     : undefined;
   document.activeElement = activeElement;
-  const modal = loadGlobal('content/modal.js', 'WLModal', { document });
+  const modal = loadGlobal('content/modal.js', 'WLModal', { document, WLHeadings: realHeadings() });
   const body = make('div');
   body.querySelector = (selector) => {
     const match = /\[data-wl-sort="(\w+)"\]/.exec(selector);
@@ -199,6 +203,25 @@ function previewWith({ sortOrder = [], sortOptions = null, handlers = {}, active
   const checkbox = controls.find(c => c.tagName === 'input') ?? null;
   return { modal, body, footer, row, controls, selects, checkbox };
 }
+
+describe('WLModal.showPreview group headings', () => {
+  it('shows the count and unwatched total beside each group name', () => {
+    const { body } = previewWith({ sortOrder: [
+      video({ id: 'a', cluster: 'Music', duration: 600 }),
+      video({ id: 'b', cluster: 'Music', duration: 1000, percentWatched: 75, inProgress: true }),
+      video({ id: 'c', cluster: 'Tech & AI', duration: 30 }),
+    ] });
+    const headings = body.children.filter(el => el.className.startsWith('wl-group-heading'));
+    assert.deepEqual(headings.map(h => h.textContent), ['Music', 'Tech & AI']);
+    assert.deepEqual(headings.map(h => h.children[0].className), ['wl-group-meta', 'wl-group-meta']);
+    assert.deepEqual(headings.map(h => h.children[0].textContent), ['2 videos · 14m', '1 video · 1m']);
+  });
+
+  it('shows only the count when no video has a duration', () => {
+    const { body } = previewWith({ sortOrder: [{ id: 'a', title: 'T', cluster: 'Music' }] });
+    assert.equal(body.children[0].children[0].textContent, '1 video');
+  });
+});
 
 describe('WLModal.showPreview sort options', () => {
   const options = { withinGroup: 'title', inProgress: 'within', groupOrder: 'alpha' };
@@ -289,7 +312,7 @@ describe('WLModal.showPreview sort options', () => {
       const { make, document } = fakeUi();
       document.createElement = (tag) => { const el = make(tag); el.focus = () => focused.push(el); return el; };
       if (activeSortKey) document.activeElement = { getAttribute: (k) => (k === 'data-wl-sort' ? activeSortKey : null) };
-      const modal = loadGlobal('content/modal.js', 'WLModal', { document });
+      const modal = loadGlobal('content/modal.js', 'WLModal', { document, WLHeadings: realHeadings() });
       const body = make('div');
       const byKey = (key) => body.children[0].children.map(controlIn).find(c => c.getAttribute('data-wl-sort') === key);
       body.querySelector = (selector) => byKey(/"(\w+)"/.exec(selector)[1]);

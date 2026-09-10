@@ -357,6 +357,7 @@ const WLModal = {
           ? 'wl-group-heading wl-in-progress'
           : 'wl-group-heading';
         heading.textContent = group.name;
+        heading.appendChild(this._renderGroupMeta(group.videos));
         body.appendChild(heading);
       }
       for (const video of group.videos) body.appendChild(this._renderItem(video));
@@ -379,6 +380,18 @@ const WLModal = {
       ? body.querySelector?.(`[data-wl-sort="${focusedControl}"]`)
       : null;
     (restore || apply).focus();
+  },
+
+  /** "12 videos · 3h 12m" beside a preview heading, same rule as the injected headings. */
+  _renderGroupMeta(videos) {
+    const meta = document.createElement('span');
+    meta.className = 'wl-group-meta';
+    const count = `${videos.length} video${videos.length === 1 ? '' : 's'}`;
+    // WLHeadings loads after this file but this runs at click time, long after
+    // every content script is in — the same reason showModes can call present().
+    const remaining = WLHeadings.remainingSeconds(videos);
+    meta.textContent = remaining > 0 ? `${count} · ${WLHeadings.formatTotal(remaining)}` : count;
+    return meta;
   },
 
   _renderSortOptions(sortOptions) {
