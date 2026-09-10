@@ -15,12 +15,62 @@
     </p>
     <button id="grant-btn">Grant access to YouTube</button>
   </div>
-  <div class="settings-form">
-    <label for="api-key-input">Claude API Key</label>
-    <input type="password" id="api-key-input" placeholder="sk-ant-...">
-    <button id="save-key-btn">Save</button>
-    <p id="key-status" class="status-text"></p>
-  </div>
-  <script src="popup.js"></script>
+
+  <form class="settings-form" id="settings-form" autocomplete="off">
+    <div class="field">
+      <label for="provider">Provider</label>
+      <select id="provider"></select>
+    </div>
+
+    <div class="field" id="key-field">
+      <div class="label-row">
+        <label for="api-key">API key</label>
+        <a id="key-link" href="#" target="_blank" rel="noopener" hidden>Get a key</a>
+      </div>
+      <input type="password" id="api-key" placeholder="Paste your key">
+    </div>
+
+    <div class="field" id="base-url-field" hidden>
+      <label for="base-url">Base URL</label>
+      <input type="url" id="base-url" placeholder="https://host/v1">
+    </div>
+
+    <div class="field">
+      <label for="model-select">Model</label>
+      <div class="row">
+        <select id="model-select"></select>
+        <input type="text" id="model-text" placeholder="model id" hidden>
+        <button type="button" id="load-models-btn">Load models</button>
+      </div>
+      <p class="help" id="model-guidance"></p>
+      <p class="help" id="provider-hint"></p>
+    </div>
+
+    <div class="field">
+      <div class="label-row">
+        <label for="taxonomy">Categories</label>
+        <button type="button" class="link-btn" id="reset-taxonomy-btn">Reset to defaults</button>
+      </div>
+      <textarea id="taxonomy" rows="8" spellcheck="false"></textarea>
+      <p class="help">One per line. Top to bottom is the order groups appear in.</p>
+    </div>
+
+    <div class="field">
+      <label for="max-new">Max new categories</label>
+      <input type="number" id="max-new" min="0" max="10" step="1">
+      <p class="help">How many categories the model may invent when nothing above fits.</p>
+    </div>
+
+    <div class="field">
+      <label for="extra">Extra instructions</label>
+      <textarea id="extra" rows="3" placeholder="e.g. Keep cooking and baking separate"></textarea>
+    </div>
+
+    <div class="row">
+      <button type="submit" id="save-btn">Save</button>
+      <p id="status" class="status-text" role="status"></p>
+    </div>
+  </form>
+  <script type="module" src="popup.js"></script>
 </body>
 </html>
