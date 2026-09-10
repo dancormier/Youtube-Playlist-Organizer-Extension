@@ -82,7 +82,7 @@ Only **Analyze & sort** needs any of this; **Sort by duration** works out of the
 |---|---|---|
 | Within a group | Shortest first (default), Longest first, Playlist order, Title A–Z | Playlist order keeps the videos exactly as they sit in the playlist today |
 | Started videos on top | Checked (default) or unchecked | Checked puts every started video in its own **In Progress** group at the top, least time left first. Unchecked keeps each one inside its category, first within the group, least time left first |
-| Group order | My category order (default), Largest group first, Alphabetical | **Other** is always the last group and **Unavailable** always comes after it, whichever you pick |
+| Group order | My category order (default), Largest group first, Smallest group first, Alphabetical | Size ties keep your category order. **Other** is always the last group and **Unavailable** always comes after it, whichever you pick |
 
 ## Providers
 

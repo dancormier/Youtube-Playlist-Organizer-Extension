@@ -21,6 +21,7 @@ const WLModal = {
     groupOrder: [
       { value: 'taxonomy', label: 'My category order' },
       { value: 'size', label: 'Largest group first' },
+      { value: 'size-asc', label: 'Smallest group first' },
       { value: 'alpha', label: 'Alphabetical' },
     ],
   },

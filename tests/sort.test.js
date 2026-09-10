@@ -385,13 +385,29 @@ describe('buildSortOrder options: groupOrder', () => {
     assert.deepEqual(groupsOf({ groupOrder: 'size' }), ['Knitting', 'Zebra', 'Apple', 'Music', 'Other', 'Unavailable']);
   });
 
+  it('size-asc: smallest first, ties broken by taxonomy order; Other still last even when smallest', () => {
+    assert.deepEqual(groupsOf({ groupOrder: 'size-asc' }), ['Music', 'Zebra', 'Apple', 'Knitting', 'Other', 'Unavailable']);
+    const oneOther = videos.filter(v => v.id !== 'other2' && v.id !== 'other3' && v.id !== 'other4');
+    const order = buildSortOrder(oneOther, clusters, [], taxonomy, { groupOrder: 'size-asc' });
+    assert.deepEqual([...new Set(order.map(v => v.cluster))], ['Music', 'Zebra', 'Apple', 'Knitting', 'Other', 'Unavailable']);
+  });
+
+  it('size and size-asc are exact reverses of each other apart from the Other/Unavailable tail', () => {
+    const desc = groupsOf({ groupOrder: 'size' }).slice(0, -2);
+    const asc = groupsOf({ groupOrder: 'size-asc' }).slice(0, -2);
+    // Zebra and Apple tie at two videos; taxonomy order (Zebra first) wins in
+    // both directions, so the reverse holds only up to that tie.
+    assert.deepEqual(desc, ['Knitting', 'Zebra', 'Apple', 'Music']);
+    assert.deepEqual(asc, ['Music', 'Zebra', 'Apple', 'Knitting']);
+  });
+
   it('alpha: alphabetical, Other last', () => {
     assert.deepEqual(groupsOf({ groupOrder: 'alpha' }), ['Apple', 'Knitting', 'Music', 'Zebra', 'Other', 'Unavailable']);
   });
 
   it('with inProgress top, the In Progress group precedes every ordering', () => {
     const withStarted = [video({ id: 'p', percentWatched: 50 }), ...videos];
-    for (const groupOrder of ['taxonomy', 'size', 'alpha']) {
+    for (const groupOrder of ['taxonomy', 'size', 'size-asc', 'alpha']) {
       const order = buildSortOrder(withStarted, clusters, [], taxonomy, { groupOrder });
       assert.equal(order[0].id, 'p', groupOrder);
       assert.equal(order[order.length - 1].id, 'ghost', groupOrder);
