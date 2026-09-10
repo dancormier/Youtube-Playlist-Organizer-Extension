@@ -149,6 +149,16 @@ describe('buildSortOrder with a custom taxonomy', () => {
     assert.deepEqual(order.map(v => v.id), ['w', 'k', 'm']);
     assert.equal(order[1].cluster, 'Knitting', 'folds onto the custom spelling');
   });
+
+  it('ignores the reserved Other and Unavailable names so no video is emitted twice', () => {
+    // Regression: a user listing "Other" as a category made `ordered` contain it
+    // twice, and the sort order doubled every video in that group.
+    const videos = [video({ id: 'a' }), video({ id: 'b' }), video({ id: 'u', unavailable: true })];
+    const order = buildSortOrder(videos, {
+      clusters: [{ name: 'Other', videoIds: ['a', 'b'] }],
+    }, [], ['Music', 'Other', 'Unavailable']);
+    assert.deepEqual(order.map(v => v.id), ['a', 'b', 'u']);
+  });
 });
 
 describe('buildSortOrder cluster-name folding', () => {

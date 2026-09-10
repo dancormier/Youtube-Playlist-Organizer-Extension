@@ -64,6 +64,10 @@ describe('normalizeSettings', () => {
     assert.deepEqual(s.taxonomy, ['Music', 'Tech', '42']);
   });
 
+  it('drops the reserved Other and Unavailable names in any case', () => {
+    assert.deepEqual(normalizeSettings({ taxonomy: ['Music', 'other', 'UNAVAILABLE', 'Tech'] }).taxonomy, ['Music', 'Tech']);
+  });
+
   it('accepts a newline-separated taxonomy string', () => {
     assert.deepEqual(normalizeSettings({ taxonomy: 'A\n\n B \nA' }).taxonomy, ['A', 'B']);
   });

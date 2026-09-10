@@ -25,7 +25,7 @@ Do this in **both** Firefox and Chrome before opening a pull request that touche
 
 1. Open the popup. In Firefox, the **Grant access to YouTube** banner appears the first time; grant it and reload YouTube. In Chrome the banner must not appear.
 2. Set a provider and key, click **Load models**, confirm the list fills and one entry is marked **(recommended)**. Save. Close and reopen the popup: every field reads back what you saved.
-3. Open a playlist with more than one page (over 100 videos). The toolbar icon turns red on that tab and stays gray on others. The **Organize** button appears.
+3. Open a playlist with more than one page (over 100 videos). The toolbar icon turns red on that tab and stays gray on others; navigating that same tab to a non-YouTube site turns it gray again. (Tabs that were already open when the extension was installed or reloaded stay gray until reloaded.) The **Organize** button appears.
 4. **Sort by duration**: preview appears, apply it, the page reloads in the new order.
 5. **Analyze & sort**: preview shows group headings in your category order; toggle **treat as unwatched** on one video and confirm it moves without a second model call (the status should not say it is analysing again); apply.
 6. Reload the page. Headings persist in the right places. Drag a video to a new position — YouTube's own drag-to-reorder must still work.

@@ -8,6 +8,7 @@ import { getProvider } from '../lib/providers.js';
 // announced itself (YT_PAGE) and stays gray everywhere else, so no `tabs`
 // permission is needed to watch navigation.
 const ICON_ACTIVE = { 16: '/icons/active/icon16.png', 48: '/icons/active/icon48.png', 128: '/icons/active/icon128.png' };
+const ICON_DEFAULT = { 16: '/icons/icon16.png', 48: '/icons/icon48.png', 128: '/icons/icon128.png' };
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'ANALYZE') {
@@ -30,9 +31,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === 'YT_PAGE') {
+  if (message.type === 'YT_PAGE' || message.type === 'YT_LEAVE') {
     const tabId = sender?.tab?.id;
-    if (tabId !== undefined) chrome.action.setIcon({ tabId, path: ICON_ACTIVE }).catch(() => {});
+    const path = message.type === 'YT_PAGE' ? ICON_ACTIVE : ICON_DEFAULT;
+    if (tabId !== undefined) chrome.action.setIcon({ tabId, path }).catch(() => {});
     return false;
   }
 
