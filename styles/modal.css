@@ -26,22 +26,34 @@
 .wl-trigger:hover { background: #fff; }
 .wl-trigger svg { width: 20px; height: 20px; }
 
-/* Inside YouTube's chip row: chip-sized, pushed to the right end of the row. */
+/* Inside YouTube's chip row: chip-sized, outlined rather than filled so it reads
+   as an action, and separated from the filter chips by a vertical rule. */
 .wl-trigger.wl-trigger-inline {
-  position: static;
-  margin-left: auto;
+  position: relative;
   flex-shrink: 0;
   height: 32px;
+  margin-left: 12px;
   padding: 0 12px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
   border-radius: 8px;
   font-size: 1.4rem;
   box-shadow: none;
-  background: rgba(0, 0, 0, 0.05);
+  background: transparent;
   color: #0f0f0f;
 }
-.wl-trigger.wl-trigger-inline:hover { background: rgba(0, 0, 0, 0.1); }
-html[dark] .wl-trigger.wl-trigger-inline { background: rgba(255, 255, 255, 0.1); color: #f1f1f1; }
-html[dark] .wl-trigger.wl-trigger-inline:hover { background: rgba(255, 255, 255, 0.2); }
+.wl-trigger.wl-trigger-inline::before {
+  content: '';
+  position: absolute;
+  left: -13px;
+  top: 4px;
+  width: 1px;
+  height: 24px;
+  background: rgba(0, 0, 0, 0.2);
+}
+.wl-trigger.wl-trigger-inline:hover { background: rgba(0, 0, 0, 0.05); }
+html[dark] .wl-trigger.wl-trigger-inline { border-color: rgba(255, 255, 255, 0.25); color: #f1f1f1; }
+html[dark] .wl-trigger.wl-trigger-inline::before { background: rgba(255, 255, 255, 0.25); }
+html[dark] .wl-trigger.wl-trigger-inline:hover { background: rgba(255, 255, 255, 0.1); }
 .wl-trigger.wl-trigger-inline svg { width: 18px; height: 18px; }
 
 .wl-modal-backdrop {
