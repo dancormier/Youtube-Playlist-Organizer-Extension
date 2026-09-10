@@ -3,6 +3,7 @@
 
 const WLPanel = {
   _runId: 0,
+  _sortSeq: 0,
   currentSortOrder: [],
   currentPlaylistId: null,
   currentSortOptions: null,
@@ -126,13 +127,16 @@ const WLPanel = {
    */
   async changeSortOptions(sortOptions) {
     const runId = this._runId;
+    // Firefox fires `change` per arrow-key step, so replies can arrive out of
+    // order; only the newest request may paint or persist.
+    const seq = ++this._sortSeq;
     WLModal.setStatus('Re-sorting...');
 
     try {
       const result = await chrome.runtime.sendMessage({
         type: 'RESORT', sortOptions, playlistId: this.currentPlaylistId,
       });
-      if (runId !== this._runId) return;
+      if (runId !== this._runId || seq !== this._sortSeq) return;
 
       if (!result.success) { WLModal.showError(result.error); return; }
 
@@ -148,7 +152,7 @@ const WLPanel = {
         console.warn('WLPanel: failed to save sort options; they will reset next time', err);
       }
     } catch (err) {
-      if (runId === this._runId) WLModal.showError(err.message);
+      if (runId === this._runId && seq === this._sortSeq) WLModal.showError(err.message);
     }
   },
 

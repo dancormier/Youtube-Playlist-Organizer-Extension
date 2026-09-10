@@ -139,7 +139,7 @@ describe('RESORT sort options', () => {
     assert.equal(response.success, true, response.error);
     assert.deepEqual(response.sortOrder.map(v => v.id), ['b', 'c', 'a']);
     assert.deepEqual(response.sortOptions, { withinGroup: 'duration-desc', inProgress: 'ignore', groupOrder: 'taxonomy' });
-    assert.deepEqual(localStore.cachedClusters.sortOptions, response.sortOptions);
+    assert.equal(localStore.cachedClusters.sortOptions, undefined, 'a resort never rewrites the cluster cache');
     assert.deepEqual(localStore.sortState.sortOptions, response.sortOptions);
   });
 

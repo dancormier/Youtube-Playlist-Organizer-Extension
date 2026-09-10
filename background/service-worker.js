@@ -60,7 +60,7 @@ async function handleAnalyze(videos, playlistId, rawSortOptions) {
     const sortOrder = buildSortOrder(videos, clusters, unwatchedOverrides, settings.taxonomy, sortOptions);
 
     await chrome.storage.local.set({
-      cachedClusters: { playlistId, clusters, videos, sortOptions },
+      cachedClusters: { playlistId, clusters, videos },
       sortState: { videos, clusters, sortOrder, sortOptions, timestamp: Date.now() },
     });
 
@@ -97,7 +97,6 @@ async function handleResort({ overrides, sortOptions: rawSortOptions, playlistId
     const sortOrder = buildSortOrder(cachedClusters.videos, cachedClusters.clusters, overrides, settings.taxonomy, sortOptions);
 
     await chrome.storage.local.set({
-      cachedClusters: { ...cachedClusters, sortOptions },
       sortState: { videos: cachedClusters.videos, clusters: cachedClusters.clusters, sortOrder, sortOptions, timestamp: Date.now() },
     });
 

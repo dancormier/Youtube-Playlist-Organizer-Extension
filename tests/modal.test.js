@@ -228,6 +228,22 @@ describe('WLModal.showPreview sort options', () => {
     assert.deepEqual(emitted.map(o => ({ ...o })), [{ withinGroup: 'title', inProgress: 'within', groupOrder: 'size' }]);
   });
 
+  it('a second change carries the first one, not a render-time snapshot', () => {
+    // Regression: two quick changes before the first re-sort returned reverted
+    // each other because the handler closed over the options at render time.
+    const emitted = [];
+    const { selects } = previewWith({
+      sortOptions: options,
+      handlers: { onSortOptionsChange: (next) => emitted.push(next) },
+    });
+    const byKey = (k) => selects.find(s => s.getAttribute('data-wl-sort') === k);
+    byKey('withinGroup').value = 'duration-desc';
+    byKey('withinGroup')._listeners.change();
+    byKey('groupOrder').value = 'alpha';
+    byKey('groupOrder')._listeners.change();
+    assert.deepEqual({ ...emitted[1] }, { withinGroup: 'duration-desc', inProgress: 'within', groupOrder: 'alpha' });
+  });
+
   it('does not throw on change when no handler is registered', () => {
     const { selects } = previewWith({ sortOptions: options });
     selects[0].value = 'playlist';

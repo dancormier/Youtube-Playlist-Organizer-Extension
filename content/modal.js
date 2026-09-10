@@ -381,6 +381,7 @@ const WLModal = {
   _renderSortOptions(sortOptions) {
     const row = document.createElement('div');
     row.className = 'wl-sort-options';
+    const selects = [];
 
     for (const [key, choices] of Object.entries(this.SORT_CHOICES)) {
       const field = document.createElement('label');
@@ -400,8 +401,16 @@ const WLModal = {
         option.selected = value === sortOptions[key];
         select.appendChild(option);
       }
+      selects.push(select);
+      // Read every select live: two quick changes before the first re-sort
+      // returns must not revert each other through a render-time snapshot.
       select.addEventListener('change', () => {
-        this._handlers.onSortOptionsChange?.({ ...sortOptions, [key]: select.value });
+        const current = {};
+        for (const s of selects) {
+          const k = s.getAttribute('data-wl-sort');
+          current[k] = s.value || sortOptions[k];
+        }
+        this._handlers.onSortOptionsChange?.(current);
       });
 
       field.append(caption, select);
