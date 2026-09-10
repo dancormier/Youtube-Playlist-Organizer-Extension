@@ -37,7 +37,7 @@ content/     (globals, NOT ES modules, load-ordered by manifest)
   playlist.js    WLPlaylist  — read() → Video[], applyOrder(playlistId, setVideoIds)
   enrich.js      WLEnrich    — player calls, concurrency 6, best-effort
   storage.js     WLStorage   — overrides + group map, serialized writes
-  modal.js       WLModal     — floating trigger + modal, all UI
+  modal.js       WLModal     — Organize trigger (chip row, floating fallback) + modal, all UI
   headings.js    WLHeadings  — heading injection into the real playlist
   panel.js       WLPanel     — orchestration, SPA lifecycle
 lib/         (ES modules; imported by the background and the popup)

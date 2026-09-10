@@ -4,7 +4,7 @@ A browser extension that sorts a YouTube playlist — most usefully **Watch Late
 
 ## What it does
 
-- Adds a floating **Organize** button to playlist pages
+- Adds an **Organize** button to the playlist's filter-chip row (floating at the bottom right if that row is missing)
 - **Analyze & sort** — the model you configure groups videos into your categories. Needs an API key (or a local Ollama), takes a few seconds
 - **Sort by duration** — shortest first. Local, instant, no API key
 - Preview the result before applying, with per-video "treat as unwatched" toggles
@@ -124,7 +124,7 @@ content/     globals, NOT ES modules, load-ordered by the manifest
   playlist.js    WLPlaylist  read() -> Video[], applyOrder()
   enrich.js      WLEnrich    player calls, concurrency 6, best-effort
   storage.js     WLStorage   overrides + group map, serialized writes
-  modal.js       WLModal     floating trigger and modal, all UI
+  modal.js       WLModal     Organize trigger (chip row or floating) and modal, all UI
   headings.js    WLHeadings  group heading injection
   panel.js       WLPanel     orchestration, SPA lifecycle
 lib/         ES modules, shared by the background and the popup
