@@ -179,3 +179,41 @@ describe('YT_PAGE', () => {
     assert.equal(iconCalls.length, 0);
   });
 });
+
+describe('ANALYZE sort options', () => {
+  const videos = [
+    video({ id: 'a', duration: 100, percentWatched: 50 }),
+    video({ id: 'b', duration: 900 }),
+    video({ id: 'c', duration: 300 }),
+  ];
+  const reply = { choices: [{ message: { content: '{"clusters":[{"name":"Music","videoIds":["a","b","c"]}]}' } }] };
+
+  it('sorts with settings.sort by default and caches the options for RESORT', async () => {
+    stubFetch(reply);
+    const { chrome, localStore } = createChromeMock({
+      sync: { settings: { provider: 'ollama', sort: { inProgress: 'ignore', withinGroup: 'duration-desc' } } },
+    });
+
+    const response = await sendMessage(chrome, { type: 'ANALYZE', videos, playlistId: 'WL' });
+
+    assert.equal(response.success, true, response.error);
+    assert.deepEqual(response.sortOrder.map(v => v.id), ['b', 'c', 'a']);
+    assert.deepEqual(response.sortOptions, { withinGroup: 'duration-desc', inProgress: 'ignore', groupOrder: 'taxonomy' });
+    assert.deepEqual(localStore.cachedClusters.sortOptions, response.sortOptions);
+    assert.deepEqual(localStore.sortState.sortOptions, response.sortOptions);
+  });
+
+  it('prefers sortOptions carried by the message', async () => {
+    stubFetch(reply);
+    const { chrome } = createChromeMock({
+      sync: { settings: { provider: 'ollama', sort: { inProgress: 'ignore' } } },
+    });
+
+    const response = await sendMessage(chrome, {
+      type: 'ANALYZE', videos, playlistId: 'WL', sortOptions: { inProgress: 'top' },
+    });
+
+    assert.equal(response.sortOrder[0].id, 'a');
+    assert.equal(response.sortOrder[0].cluster, null);
+  });
+});

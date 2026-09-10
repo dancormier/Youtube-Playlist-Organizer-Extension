@@ -118,3 +118,79 @@ describe('RESORT playlist scoping', () => {
     assert.ok(localStore.sortState.timestamp > 1);
   });
 });
+
+describe('RESORT sort options', () => {
+  const videos = [
+    video({ id: 'a', duration: 100, percentWatched: 50 }),
+    video({ id: 'b', duration: 900 }),
+    video({ id: 'c', duration: 300 }),
+  ];
+  const clusters = { clusters: [{ name: 'Music', videoIds: ['a', 'b', 'c'] }] };
+  const cache = (extra = {}) => ({ playlistId: 'WL', clusters, videos, ...extra });
+
+  it('uses settings.sort when the message carries no sortOptions, and echoes what it used', async () => {
+    const { chrome, localStore } = createChromeMock({
+      local: { cachedClusters: cache() },
+      sync: { settings: { provider: 'ollama', sort: { withinGroup: 'duration-desc', inProgress: 'ignore' } } },
+    });
+
+    const response = await sendMessage(chrome, { type: 'RESORT', overrides: [], playlistId: 'WL' });
+
+    assert.equal(response.success, true, response.error);
+    assert.deepEqual(response.sortOrder.map(v => v.id), ['b', 'c', 'a']);
+    assert.deepEqual(response.sortOptions, { withinGroup: 'duration-desc', inProgress: 'ignore', groupOrder: 'taxonomy' });
+    assert.deepEqual(localStore.cachedClusters.sortOptions, response.sortOptions);
+    assert.deepEqual(localStore.sortState.sortOptions, response.sortOptions);
+  });
+
+  it('prefers sortOptions from the message over the saved settings', async () => {
+    const { chrome } = createChromeMock({
+      local: { cachedClusters: cache({ sortOptions: { withinGroup: 'title' } }) },
+      sync: { settings: { provider: 'ollama', sort: { withinGroup: 'duration-desc' } } },
+    });
+
+    const response = await sendMessage(chrome, {
+      type: 'RESORT', overrides: [], playlistId: 'WL', sortOptions: { inProgress: 'within', withinGroup: 'duration-asc' },
+    });
+
+    assert.deepEqual(response.sortOrder.map(v => v.id), ['a', 'c', 'b']);
+    assert.equal(response.sortOptions.inProgress, 'within');
+  });
+
+  it('keeps the stored overrides when the message omits them', async () => {
+    const { chrome, localStore } = createChromeMock({
+      local: { cachedClusters: cache(), unwatchedOverrides: ['a'] },
+      sync: { settings: { provider: 'ollama' } },
+    });
+
+    const response = await sendMessage(chrome, { type: 'RESORT', playlistId: 'WL', sortOptions: { groupOrder: 'alpha' } });
+
+    assert.equal(response.success, true, response.error);
+    assert.deepEqual(localStore.unwatchedOverrides, ['a'], 'a sort-option change must not clear the toggle');
+    assert.equal(response.sortOrder.find(v => v.id === 'a').cluster, 'Music', 'override still applied');
+  });
+
+  it('still stores overrides sent explicitly (the treat-as-unwatched toggle)', async () => {
+    const { chrome, localStore } = createChromeMock({
+      local: { cachedClusters: cache(), unwatchedOverrides: ['a'] },
+      sync: { settings: { provider: 'ollama' } },
+    });
+
+    await sendMessage(chrome, { type: 'RESORT', overrides: [], playlistId: 'WL' });
+
+    assert.deepEqual(localStore.unwatchedOverrides, []);
+  });
+
+  it('whitelists unknown option values back to the defaults', async () => {
+    const { chrome } = createChromeMock({
+      local: { cachedClusters: cache() },
+      sync: { settings: { provider: 'ollama' } },
+    });
+
+    const response = await sendMessage(chrome, {
+      type: 'RESORT', overrides: [], playlistId: 'WL', sortOptions: { withinGroup: 'random', inProgress: 'top' },
+    });
+
+    assert.equal(response.sortOptions.withinGroup, 'duration-asc');
+  });
+});
