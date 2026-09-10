@@ -99,3 +99,33 @@ describe('WLStorage group map', () => {
     assert.deepEqual({ ...(await api.getGroupMap()) }, {});
   });
 });
+
+describe('WLStorage.setSortOptions', () => {
+  function loadWithSync(initial = {}) {
+    const sync = { ...initial };
+    const chrome = {
+      storage: {
+        local: { async get() { return {}; }, async set() {} },
+        sync: {
+          async get(key) { return key in sync ? { [key]: sync[key] } : {}; },
+          async set(values) { Object.assign(sync, values); },
+        },
+      },
+    };
+    return { api: loadGlobal('content/storage.js', 'WLStorage', { chrome }), sync };
+  }
+
+  it('writes sort into the existing settings object without touching its other fields', async () => {
+    const { api, sync } = loadWithSync({ settings: { provider: 'openai', apiKey: 'k', sort: { withinGroup: 'title' } } });
+    await api.setSortOptions({ withinGroup: 'playlist', inProgress: 'within', groupOrder: 'alpha' });
+    assert.equal(sync.settings.apiKey, 'k');
+    assert.equal(sync.settings.provider, 'openai');
+    assert.deepEqual({ ...sync.settings.sort }, { withinGroup: 'playlist', inProgress: 'within', groupOrder: 'alpha' });
+  });
+
+  it('creates the settings object when none is stored', async () => {
+    const { api, sync } = loadWithSync();
+    await api.setSortOptions({ groupOrder: 'size' });
+    assert.deepEqual({ ...sync.settings.sort }, { groupOrder: 'size' });
+  });
+});

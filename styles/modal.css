@@ -149,6 +149,39 @@ html[dark] .wl-trigger.wl-trigger-inline:hover { background: rgba(255, 255, 255,
 .wl-mode-btn:hover { background: rgba(255, 255, 255, 0.08); }
 .wl-mode-btn small { display: block; margin-top: 4px; color: #aaa; font-size: 1.2rem; }
 
+/* Sort-option selects above the preview list. Same fill and text as
+   .wl-modal-btn so the row reads as controls, not content. */
+.wl-sort-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #3f3f3f;
+}
+.wl-sort-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.wl-sort-label { color: #aaa; font-size: 1.2rem; }
+.wl-sort-select {
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f1f1f1;
+  font-family: inherit;
+  font-size: 1.3rem;
+  cursor: pointer;
+}
+.wl-sort-select:hover { background: rgba(255, 255, 255, 0.2); }
+/* The dropdown list inherits the page's colour scheme, so it needs the dark
+   surface set explicitly or light-theme YouTube shows white text on white. */
+.wl-sort-select option { background: #212121; color: #f1f1f1; }
+
 .wl-group-heading {
   position: sticky;
   top: 0;

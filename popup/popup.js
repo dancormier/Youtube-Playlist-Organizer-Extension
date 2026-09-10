@@ -2,6 +2,7 @@
 // background; build.sh copies lib/ into both dist layouts for this reason.
 import { PROVIDERS, MODEL_GUIDANCE, getProvider, pickRecommended } from '../lib/providers.js';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from '../lib/settings.js';
+import { SORT_CHOICES } from '../lib/sort.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -57,6 +58,11 @@ const els = {
   resetTaxonomy: $('#reset-taxonomy-btn'),
   maxNew: $('#max-new'),
   extra: $('#extra'),
+  sort: {
+    withinGroup: $('#sort-within-group'),
+    inProgress: $('#sort-in-progress'),
+    groupOrder: $('#sort-group-order'),
+  },
   save: $('#save-btn'),
   status: $('#status'),
 };
@@ -112,6 +118,7 @@ function formSettings() {
     taxonomy: els.taxonomy.value.split('\n'),
     maxNewCategories: els.maxNew.value,
     extraInstructions: els.extra.value,
+    sort: Object.fromEntries(Object.entries(els.sort).map(([key, el]) => [key, el.value])),
   };
 }
 
@@ -135,6 +142,7 @@ function render(settings) {
   els.taxonomy.value = settings.taxonomy.join('\n');
   els.maxNew.value = settings.maxNewCategories;
   els.extra.value = settings.extraInstructions;
+  for (const [key, el] of Object.entries(els.sort)) el.value = settings.sort[key];
 }
 
 for (const p of PROVIDERS) {
@@ -142,6 +150,14 @@ for (const p of PROVIDERS) {
   opt.value = p.id;
   opt.textContent = p.label;
   els.provider.append(opt);
+}
+for (const [key, el] of Object.entries(els.sort)) {
+  for (const { value, label } of SORT_CHOICES[key]) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    el.append(opt);
+  }
 }
 els.guidance.textContent = MODEL_GUIDANCE;
 

@@ -2,6 +2,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadGlobal } from './helpers/load-global.js';
+import { SORT_CHOICES } from '../lib/sort.js';
 
 const load = () => loadGlobal('content/modal.js', 'WLModal', { document: undefined });
 
@@ -76,6 +77,35 @@ describe('WLModal.metaFor', () => {
   });
 });
 
+describe('WLModal.isInProgress', () => {
+  it('trusts the sorter\'s inProgress flag when present, whatever the cluster is', () => {
+    // inProgress 'within' keeps the cluster name on a started video.
+    assert.equal(load().isInProgress(video({ cluster: 'Music', inProgress: true })), true);
+    assert.equal(load().isInProgress(video({ cluster: null, inProgress: false })), false);
+  });
+
+  it('falls back to the null-cluster convention for orders saved before the flag existed', () => {
+    assert.equal(load().isInProgress(video({ cluster: null })), true);
+    assert.equal(load().isInProgress(video({ cluster: 'Music' })), false);
+  });
+
+  it('metaFor shows time left for a started video inside its category', () => {
+    assert.equal(load().metaFor(video({ cluster: 'Music', inProgress: true, duration: 600, percentWatched: 50 })), '5:00 left');
+  });
+});
+
+describe('WLModal.SORT_CHOICES constant drift', () => {
+  it('matches lib/sort.js SORT_CHOICES exactly', () => {
+    // Content scripts cannot import lib/, so the modal carries its own copy of
+    // the select contents. The background whitelists values against the lib
+    // copy, so a value that only exists here would silently fall back to the
+    // default at sort time.
+    const modal = load();
+    assert.deepEqual(JSON.parse(JSON.stringify(modal.SORT_CHOICES)), JSON.parse(JSON.stringify(SORT_CHOICES)));
+    assert.deepEqual(Object.keys(modal.SORT_FIELD_LABELS), Object.keys(SORT_CHOICES));
+  });
+});
+
 /**
  * Minimal element/document fake, just enough for showModes(). open() builds the
  * modal shell with innerHTML, which is not worth faking, so these tests stub
@@ -139,6 +169,104 @@ describe('WLModal.showModes', () => {
     assert.doesNotThrow(() => {
       footer.children.find(el => el.textContent === 'Hide group headings')._listeners.click();
     });
+  });
+});
+
+function previewWith({ sortOrder = [], sortOptions = null, handlers = {}, activeSortKey = null } = {}) {
+  const { make, document } = fakeUi();
+  const activeElement = activeSortKey
+    ? { getAttribute: (k) => (k === 'data-wl-sort' ? activeSortKey : null) }
+    : undefined;
+  document.activeElement = activeElement;
+  const modal = loadGlobal('content/modal.js', 'WLModal', { document });
+  const body = make('div');
+  body.querySelector = (selector) => {
+    const match = /\[data-wl-sort="(\w+)"\]/.exec(selector);
+    const row = body.children.find(el => el.className === 'wl-sort-options');
+    return row?.children.map(f => f.children[1]).find(sel => sel.getAttribute('data-wl-sort') === match?.[1]) ?? null;
+  };
+  const footer = make('div');
+  modal._body = () => body;
+  modal._footer = () => footer;
+  modal._handlers = handlers;
+  modal.showPreview(sortOrder, sortOptions);
+  const row = body.children.find(el => el.className === 'wl-sort-options') ?? null;
+  const selects = row ? row.children.map(field => field.children[1]) : [];
+  return { modal, body, footer, row, selects };
+}
+
+describe('WLModal.showPreview sort options', () => {
+  const options = { withinGroup: 'title', inProgress: 'within', groupOrder: 'alpha' };
+
+  it('renders no options row when none are given (duration mode)', () => {
+    const { row, body } = previewWith({ sortOrder: [video({ id: 'a' })] });
+    assert.equal(row, null);
+    assert.equal(body.children[0].className, 'wl-group-heading');
+  });
+
+  it('renders one labelled select per option, above the list, with the current value selected', () => {
+    const { body, row, selects } = previewWith({ sortOrder: [video({ id: 'a' })], sortOptions: options });
+    assert.equal(body.children[0], row, 'the row comes before the first heading');
+    assert.deepEqual(row.children.map(f => f.tagName), ['label', 'label', 'label']);
+    assert.deepEqual(selects.map(s => s.getAttribute('data-wl-sort')), ['withinGroup', 'inProgress', 'groupOrder']);
+    for (const select of selects) {
+      const key = select.getAttribute('data-wl-sort');
+      assert.deepEqual(select.children.map(o => o.value), SORT_CHOICES[key].map(c => c.value));
+      assert.deepEqual(select.children.filter(o => o.selected).map(o => o.value), [options[key]]);
+    }
+  });
+
+  it('a change emits the full option set with only that key replaced', () => {
+    const emitted = [];
+    const { selects } = previewWith({
+      sortOptions: options,
+      handlers: { onSortOptionsChange: (next) => emitted.push(next) },
+    });
+    const groupOrder = selects.find(s => s.getAttribute('data-wl-sort') === 'groupOrder');
+    groupOrder.value = 'size';
+    groupOrder._listeners.change();
+    assert.deepEqual(emitted.map(o => ({ ...o })), [{ withinGroup: 'title', inProgress: 'within', groupOrder: 'size' }]);
+  });
+
+  it('does not throw on change when no handler is registered', () => {
+    const { selects } = previewWith({ sortOptions: options });
+    selects[0].value = 'playlist';
+    assert.doesNotThrow(() => selects[0]._listeners.change());
+  });
+
+  it('focuses Apply normally, but the select that triggered a re-render keeps focus', () => {
+    const focusedWith = (activeSortKey) => {
+      const focused = [];
+      const { make, document } = fakeUi();
+      document.createElement = (tag) => { const el = make(tag); el.focus = () => focused.push(el); return el; };
+      if (activeSortKey) document.activeElement = { getAttribute: (k) => (k === 'data-wl-sort' ? activeSortKey : null) };
+      const modal = loadGlobal('content/modal.js', 'WLModal', { document });
+      const body = make('div');
+      body.querySelector = () => body.children[0].children[1].children[1];
+      const footer = make('div');
+      modal._body = () => body;
+      modal._footer = () => footer;
+      modal.showPreview([], options);
+      return { focused, apply: footer.children[0], inProgressSelect: body.children[0].children[1].children[1] };
+    };
+
+    const plain = focusedWith(null);
+    assert.deepEqual(plain.focused, [plain.apply]);
+
+    const rerender = focusedWith('inProgress');
+    assert.deepEqual(rerender.focused, [rerender.inProgressSelect]);
+  });
+});
+
+describe('WLModal._renderItem unwatched toggle', () => {
+  it('reports pressed only when the sorter treated a started video as unwatched', () => {
+    const { document } = fakeUi();
+    const modal = loadGlobal('content/modal.js', 'WLModal', { document });
+    modal._handlers = {};
+    const pressed = (v) => modal._renderItem(v).children[2].getAttribute('aria-pressed');
+    assert.equal(pressed(video({ percentWatched: 50, cluster: null, inProgress: true })), 'false');
+    assert.equal(pressed(video({ percentWatched: 50, cluster: 'Music', inProgress: true })), 'false', 'within: started, not overridden');
+    assert.equal(pressed(video({ percentWatched: 50, cluster: 'Music', inProgress: false })), 'true', 'overridden');
   });
 });
 

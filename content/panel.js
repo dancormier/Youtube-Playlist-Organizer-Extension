@@ -5,6 +5,7 @@ const WLPanel = {
   _runId: 0,
   currentSortOrder: [],
   currentPlaylistId: null,
+  currentSortOptions: null,
 
   openModal() {
     WLModal.open({
@@ -12,6 +13,7 @@ const WLPanel = {
       onApply: () => this.applySort(),
       onCancel: () => { this._runId++; this.currentSortOrder = []; },
       onToggleUnwatched: (videoId) => this.toggleUnwatched(videoId),
+      onSortOptionsChange: (sortOptions) => this.changeSortOptions(sortOptions),
       onHideHeadings: () => this.hideHeadings(),
     });
   },
@@ -71,7 +73,8 @@ const WLPanel = {
       if (!result.success) { WLModal.showError(result.error); return; }
 
       this.currentSortOrder = result.sortOrder;
-      WLModal.showPreview(result.sortOrder);
+      this.currentSortOptions = result.sortOptions ?? null;
+      WLModal.showPreview(result.sortOrder, this.currentSortOptions);
     } catch (err) {
       if (runId === this._runId) WLModal.showError(err.message);
     }
@@ -96,18 +99,55 @@ const WLPanel = {
 
       const result = await chrome.runtime.sendMessage({
         type: 'RESORT', overrides, playlistId: this.currentPlaylistId,
+        sortOptions: this.currentSortOptions ?? undefined,
       });
       if (runId !== this._runId) return;
 
       if (!result.success) { WLModal.showError(result.error); return; }
 
       this.currentSortOrder = result.sortOrder;
-      WLModal.showPreview(result.sortOrder);
+      this.currentSortOptions = result.sortOptions ?? this.currentSortOptions;
+      WLModal.showPreview(result.sortOrder, this.currentSortOptions);
     } catch (err) {
       // The modal invokes this fire-and-forget, so an uncaught rejection here
       // is invisible to the user — the everyday trigger is "Extension context
       // invalidated" after an extension reload, which would otherwise leave
       // the modal stuck on "Re-sorting..." forever.
+      if (runId === this._runId) WLModal.showError(err.message);
+    }
+  },
+
+  /**
+   * Re-sort the cached analysis with different options and remember them as
+   * the default for next time. Same run-token discipline as toggleUnwatched():
+   * this belongs to the session that owns the modal and never bumps _runId.
+   * The overrides are deliberately not sent — the background keeps the stored
+   * ones, so this cannot undo a "treat as unwatched" toggle in flight.
+   */
+  async changeSortOptions(sortOptions) {
+    const runId = this._runId;
+    WLModal.setStatus('Re-sorting...');
+
+    try {
+      const result = await chrome.runtime.sendMessage({
+        type: 'RESORT', sortOptions, playlistId: this.currentPlaylistId,
+      });
+      if (runId !== this._runId) return;
+
+      if (!result.success) { WLModal.showError(result.error); return; }
+
+      this.currentSortOrder = result.sortOrder;
+      this.currentSortOptions = result.sortOptions ?? sortOptions;
+      WLModal.showPreview(result.sortOrder, this.currentSortOptions);
+
+      // The preview is already correct; failing to remember the choice for next
+      // time is not worth an error state in the modal.
+      try {
+        await WLStorage.setSortOptions(this.currentSortOptions);
+      } catch (err) {
+        console.warn('WLPanel: failed to save sort options; they will reset next time', err);
+      }
+    } catch (err) {
       if (runId === this._runId) WLModal.showError(err.message);
     }
   },
@@ -324,6 +364,7 @@ function resetForNavigation() {
   WLPanel._runId++;
   WLPanel.currentSortOrder = [];
   WLPanel.currentPlaylistId = null;
+  WLPanel.currentSortOptions = null;
   WLModal.close();
   WLInnerTube.resetConfig();
   WLHeadings.stop();

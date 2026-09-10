@@ -5,6 +5,32 @@
 const WLModal = {
   IN_PROGRESS_LABEL: '▶ In Progress',
 
+  // Mirror of lib/sort.js SORT_CHOICES — content scripts cannot import lib/.
+  // tests/modal.test.js pins the two copies together.
+  SORT_CHOICES: {
+    withinGroup: [
+      { value: 'duration-asc', label: 'Shortest first' },
+      { value: 'duration-desc', label: 'Longest first' },
+      { value: 'playlist', label: 'Playlist order' },
+      { value: 'title', label: 'Title A–Z' },
+    ],
+    inProgress: [
+      { value: 'top', label: 'Own group on top' },
+      { value: 'within', label: 'Inside their category' },
+      { value: 'ignore', label: 'Ignore watch progress' },
+    ],
+    groupOrder: [
+      { value: 'taxonomy', label: 'My category order' },
+      { value: 'size', label: 'Largest group first' },
+      { value: 'alpha', label: 'Alphabetical' },
+    ],
+  },
+  SORT_FIELD_LABELS: {
+    withinGroup: 'Within a group',
+    inProgress: 'In progress',
+    groupOrder: 'Group order',
+  },
+
   _root: null,
   _lastFocused: null,
   _handlers: {},
@@ -44,9 +70,17 @@ const WLModal = {
       : `${minutes}:${String(secs).padStart(2, '0')}`;
   },
 
+  /**
+   * Sorted videos carry `inProgress` from lib/sort.js; a `cluster: null` fallback
+   * keeps a sortState persisted before that field existed rendering correctly.
+   */
+  isInProgress(video) {
+    return video.inProgress ?? video.cluster === null;
+  },
+
   metaFor(video) {
     if (video.unavailable) return 'unavailable';
-    if (video.cluster === null) {
+    if (this.isInProgress(video)) {
       const pct = Number(video.percentWatched) || 0;
       return `${this.formatDuration(video.duration * (1 - pct / 100))} left`;
     }
@@ -291,16 +325,27 @@ const WLModal = {
     if (cancellable) cancel.focus();
   },
 
-  showPreview(sortOrder) {
+  /**
+   * `sortOptions` is the set the order was built with; when given, the option
+   * selects render above the list. Duration mode passes none and gets no row.
+   */
+  showPreview(sortOrder, sortOptions = null) {
     const body = this._body();
     const footer = this._footer();
     if (!body) return;
 
     this._cancellable = true;
 
+    // A re-render triggered by one of the selects must not steal focus from it:
+    // arrow keys on a focused <select> fire `change` per step in Firefox, and
+    // jumping to Apply after each would strand a keyboard user.
+    const focusedSelect = document.activeElement?.getAttribute?.('data-wl-sort') ?? null;
+
     this.setStatus('');
     body.textContent = '';
     footer.textContent = '';
+
+    if (sortOptions) body.appendChild(this._renderSortOptions(sortOptions));
 
     for (const group of this.toGroups(sortOrder)) {
       if (group.name !== null) {
@@ -327,7 +372,42 @@ const WLModal = {
     cancel.addEventListener('click', () => this._cancel());
 
     footer.append(apply, cancel);
-    apply.focus();
+    const restore = focusedSelect
+      ? body.querySelector?.(`[data-wl-sort="${focusedSelect}"]`)
+      : null;
+    (restore || apply).focus();
+  },
+
+  _renderSortOptions(sortOptions) {
+    const row = document.createElement('div');
+    row.className = 'wl-sort-options';
+
+    for (const [key, choices] of Object.entries(this.SORT_CHOICES)) {
+      const field = document.createElement('label');
+      field.className = 'wl-sort-field';
+
+      const caption = document.createElement('span');
+      caption.className = 'wl-sort-label';
+      caption.textContent = this.SORT_FIELD_LABELS[key];
+
+      const select = document.createElement('select');
+      select.className = 'wl-sort-select';
+      select.setAttribute('data-wl-sort', key);
+      for (const { value, label } of choices) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = label;
+        option.selected = value === sortOptions[key];
+        select.appendChild(option);
+      }
+      select.addEventListener('change', () => {
+        this._handlers.onSortOptionsChange?.({ ...sortOptions, [key]: select.value });
+      });
+
+      field.append(caption, select);
+      row.appendChild(field);
+    }
+    return row;
   },
 
   _renderItem(video) {
@@ -350,7 +430,7 @@ const WLModal = {
       toggle.className = 'wl-unwatch-btn';
       toggle.type = 'button';
       toggle.textContent = 'Unwatched';
-      toggle.setAttribute('aria-pressed', String(video.cluster !== null));
+      toggle.setAttribute('aria-pressed', String(!this.isInProgress(video)));
       toggle.setAttribute('aria-label', `Treat "${video.title}" as unwatched`);
       toggle.addEventListener('click', () => this._handlers.onToggleUnwatched?.(video.id));
       row.appendChild(toggle);

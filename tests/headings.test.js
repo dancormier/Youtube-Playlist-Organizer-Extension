@@ -2,6 +2,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadGlobal } from './helpers/load-global.js';
+import { buildSortOrder } from '../lib/sort.js';
 
 // Load the real SELECTORS — headings.js reads SELECTORS.PLAYLIST_ITEMS/VIDEO_LINK
 // as a bare global (set by content/selectors.js in the real content-script context).
@@ -624,5 +625,29 @@ describe('WLHeadings.inject drift repair', () => {
       container.children.filter(el => el.tagName === 'h2').length, 0,
       'no heading may be a direct child of the sortable container',
     );
+  });
+});
+
+describe('WLHeadings.boundariesFrom against real sort output', () => {
+  // With inProgress 'within' or 'ignore' the sorter emits no null cluster, so no
+  // In Progress heading must appear and started videos count toward their group.
+  const clusters = { clusters: [{ name: 'Music', videoIds: ['a', 'b'] }] };
+  const videos = [
+    { id: 'a', title: 'A', duration: 600, percentWatched: 50, unavailable: false },
+    { id: 'b', title: 'B', duration: 600, percentWatched: 0, unavailable: false },
+  ];
+
+  it('emits an In Progress heading only for the top option', () => {
+    const headings = load();
+    const top = headings.boundariesFrom(buildSortOrder(videos, clusters, [], undefined, { inProgress: 'top' }));
+    assert.deepEqual([...top].map(b => ({ ...b })), [
+      { videoId: 'a', name: headings.IN_PROGRESS_LABEL, count: 1 },
+      { videoId: 'b', name: 'Music', count: 1 },
+    ]);
+
+    for (const inProgress of ['within', 'ignore']) {
+      const boundaries = headings.boundariesFrom(buildSortOrder(videos, clusters, [], undefined, { inProgress }));
+      assert.deepEqual([...boundaries].map(b => ({ ...b })), [{ videoId: 'a', name: 'Music', count: 2 }], inProgress);
+    }
   });
 });

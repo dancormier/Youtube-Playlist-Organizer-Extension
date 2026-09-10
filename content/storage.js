@@ -35,6 +35,25 @@ const WLStorage = {
     return data.groupMap || {};
   },
 
+  /**
+   * The sort options live inside the single `settings` object in storage.sync
+   * (lib/settings.js), which a content script cannot import. Written raw;
+   * loadSettings() normalises on every read, so a bad value is harmless. By the
+   * time a preview is on screen ANALYZE has already run loadSettings(), so the
+   * `settings` key exists and the legacy top-level apiKey has been migrated —
+   * this write cannot shadow it.
+   */
+  setSortOptions(sort) {
+    this._queue = this._queue.then(async () => {
+      const { settings = {} } = await chrome.storage.sync.get('settings');
+      await chrome.storage.sync.set({ settings: { ...settings, sort } });
+    }).catch((err) => {
+      this._queue = Promise.resolve();
+      throw err;
+    });
+    return this._queue;
+  },
+
   setGroupMap(map) {
     this._queue = this._queue.then(async () => {
       await chrome.storage.local.set({ groupMap: map });

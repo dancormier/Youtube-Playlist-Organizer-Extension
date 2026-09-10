@@ -80,8 +80,8 @@ function loadPanel(sandbox = {}) {
  * `setGroupMap`, when set, replaces the default no-op WLStorage.setGroupMap —
  * used by the post-sort persistence tests to observe ordering/timing.
  */
-function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, toggleOverride, reload, runTimers, sortOrder, playlistId, setGroupMap }) {
-  const modalCalls = { showBusy: [], showPreview: [], showError: [], setStatus: [] };
+function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, toggleOverride, reload, runTimers, sortOrder, playlistId, setGroupMap, setSortOptions, sortOptions }) {
+  const modalCalls = { showBusy: [], showPreview: [], showPreviewOptions: [], showError: [], setStatus: [] };
   const sandbox = {
     chrome: { runtime: { sendMessage } },
     WLPlaylist: { read: async () => videos, applyOrder },
@@ -89,6 +89,7 @@ function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, toggleOve
     WLStorage: {
       toggleOverride,
       setGroupMap: setGroupMap || (async () => {}),
+      setSortOptions: setSortOptions || (async () => {}),
       getGroupMap: async () => ({}),
     },
     WLHeadings: {
@@ -105,7 +106,7 @@ function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, toggleOve
       close() {},
       open() {},
       showBusy(text) { modalCalls.showBusy.push(text); },
-      showPreview(order) { modalCalls.showPreview.push(order); },
+      showPreview(order, options) { modalCalls.showPreview.push(order); modalCalls.showPreviewOptions.push(options); },
       showError(msg) { modalCalls.showError.push(msg); },
       setStatus(text) { modalCalls.setStatus.push(text); },
     },
@@ -119,6 +120,7 @@ function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, toggleOve
   const WLPanel = loadPanel(sandbox);
   if (sortOrder) WLPanel.currentSortOrder = sortOrder;
   if (playlistId) WLPanel.currentPlaylistId = playlistId;
+  if (sortOptions) WLPanel.currentSortOptions = sortOptions;
   return { WLPanel, modalCalls, WLModal: sandbox.WLModal };
 }
 
@@ -801,5 +803,119 @@ describe('mountTrigger return value', () => {
 
     assert.equal(modal.mountTrigger({ onOpen: () => created.push(1) }), true);
     assert.equal(modal.mountTrigger({ onOpen: () => created.push(1) }), false, 'second call must not create a duplicate');
+  });
+});
+
+describe('sort options plumbing', () => {
+  const OPTS = { withinGroup: 'title', inProgress: 'within', groupOrder: 'alpha' };
+
+  it('runSort passes the options ANALYZE used to the preview and remembers them', async () => {
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async () => ({ success: true, sortOrder: [], sortOptions: OPTS }),
+      enrich: async () => {},
+      videos: [{ id: 'a', setVideoId: 'A', duration: 60, percentWatched: 0 }],
+    });
+
+    await WLPanel.runSort('ai');
+
+    assert.deepEqual({ ...modalCalls.showPreviewOptions[0] }, OPTS);
+    assert.deepEqual({ ...WLPanel.currentSortOptions }, OPTS);
+  });
+
+  it('runSort in duration mode shows the preview without an options row', async () => {
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async () => ({ success: true, sortOrder: [] }),
+      enrich: async () => {},
+      videos: [{ id: 'a', setVideoId: 'A', duration: 60, percentWatched: 0 }],
+    });
+
+    await WLPanel.runSort('duration');
+
+    assert.equal(modalCalls.showPreviewOptions[0], null);
+  });
+
+  it('changeSortOptions sends RESORT with sortOptions and no overrides key, then persists what came back', async () => {
+    const sent = [];
+    const saved = [];
+    const echoed = { ...OPTS, groupOrder: 'size' };
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async (msg) => { sent.push(msg); return { success: true, sortOrder: [{ id: 'a', setVideoId: 'A' }], sortOptions: echoed }; },
+      setSortOptions: async (opts) => { saved.push(opts); },
+      playlistId: 'PL1',
+      sortOptions: OPTS,
+    });
+
+    await WLPanel.changeSortOptions({ ...OPTS, groupOrder: 'size' });
+
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].type, 'RESORT');
+    assert.equal(sent[0].playlistId, 'PL1');
+    assert.deepEqual({ ...sent[0].sortOptions }, echoed);
+    assert.equal('overrides' in sent[0], false, 'must not clobber the stored treat-as-unwatched list');
+    assert.deepEqual(modalCalls.showPreview[0].map(v => v.setVideoId), ['A']);
+    assert.deepEqual({ ...modalCalls.showPreviewOptions[0] }, echoed);
+    assert.deepEqual(saved.map(o => ({ ...o })), [echoed]);
+    assert.deepEqual({ ...WLPanel.currentSortOptions }, echoed);
+  });
+
+  it('changeSortOptions surfaces a RESORT failure and saves nothing', async () => {
+    const saved = [];
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async () => ({ success: false, error: 'stale' }),
+      setSortOptions: async (opts) => { saved.push(opts); },
+      playlistId: 'PL1',
+    });
+
+    await WLPanel.changeSortOptions(OPTS);
+
+    assert.deepEqual(modalCalls.showError, ['stale']);
+    assert.deepEqual(saved, []);
+  });
+
+  it('changeSortOptions still shows the preview when persisting fails', async () => {
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async () => ({ success: true, sortOrder: [], sortOptions: OPTS }),
+      setSortOptions: async () => { throw new Error('quota'); },
+      playlistId: 'PL1',
+    });
+
+    await assert.doesNotReject(() => WLPanel.changeSortOptions(OPTS));
+
+    assert.equal(modalCalls.showPreview.length, 1);
+    assert.deepEqual(modalCalls.showError, []);
+  });
+
+  it('a superseded changeSortOptions neither renders nor saves', async () => {
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const saved = [];
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async () => { await gate; return { success: true, sortOrder: [], sortOptions: OPTS }; },
+      setSortOptions: async (opts) => { saved.push(opts); },
+      playlistId: 'PL1',
+    });
+
+    const pending = WLPanel.changeSortOptions(OPTS);
+    WLPanel._runId++;
+    release();
+    await pending;
+
+    assert.deepEqual(modalCalls.showPreview, []);
+    assert.deepEqual(saved, []);
+  });
+
+  it('toggleUnwatched carries the current sort options so the toggle keeps the chosen layout', async () => {
+    const sent = [];
+    const { WLPanel } = loadPanelWithStubs({
+      sendMessage: async (msg) => { sent.push(msg); return { success: true, sortOrder: [], sortOptions: OPTS }; },
+      toggleOverride: async () => ['v1'],
+      playlistId: 'PL1',
+      sortOptions: OPTS,
+    });
+
+    await WLPanel.toggleUnwatched('v1');
+
+    assert.deepEqual(sent[0].overrides, ['v1']);
+    assert.deepEqual({ ...sent[0].sortOptions }, OPTS);
   });
 });
