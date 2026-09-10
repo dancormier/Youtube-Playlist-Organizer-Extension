@@ -1,10 +1,10 @@
 # Handoff — YouTube Playlist Organizer
 
 **Written:** 2026-07-27 · **Last updated:** 2026-07-27
-**Remote:** [github.com/dancormier/youtube-playlist-organizer](https://github.com/dancormier/youtube-playlist-organizer) — private, default branch `main`
+**Remote:** [github.com/dancormier/youtube-playlist-organizer](https://github.com/dancormier/youtube-playlist-organizer)
 **Version:** 0.6.0 · **Tests:** 185 passing · **Working tree:** clean
 
-**All four original issues are closed and verified in Firefox by Dan**, along with one found afterwards (stale headings after re-sorting). Read this before touching anything: it covers what the extension does, what was measured rather than assumed, and what is decided and why.
+**All four original issues are closed and verified in Firefox**, along with one found afterwards (stale headings after re-sorting). Read this before touching anything: it covers what the extension does, what was measured rather than assumed, and what is decided and why.
 
 ---
 
@@ -12,13 +12,13 @@
 
 A Firefox-first (Chrome secondary) browser extension that sorts a YouTube playlist — primarily Watch Later — into topic groups using Claude, or by duration.
 
-**Dan's setup:** Firefox is the primary browser. Chrome is a secondary target and is not tested regularly. Firefox's devtools *Inspector* panel crashes on YouTube (`can't access dead object`); the *Console* tab works fine. That crash is a Firefox bug, unrelated to this extension, and is why diagnostics were once rendered into the page rather than logged.
+**Setup:** Firefox is the primary browser. Chrome is a secondary target and is not tested regularly. Firefox's devtools *Inspector* panel crashes on YouTube (`can't access dead object`); the *Console* tab works fine. That crash is a Firefox bug, unrelated to this extension, and is why diagnostics were once rendered into the page rather than logged.
 
 ---
 
 ## Current state
 
-Working end to end, verified manually by Dan except where noted:
+Working end to end, verified manually in Firefox except where noted:
 
 - Floating **Organize** button on playlist pages → modal with two sort modes
 - **Analyze & sort** — Claude groups into a fixed taxonomy (needs an API key, takes seconds)

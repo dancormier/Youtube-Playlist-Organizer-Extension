@@ -2,7 +2,7 @@
 
 A Firefox-first browser extension that sorts a YouTube playlist — primarily **Watch Later** — into topic groups using Claude, or by duration.
 
-Single-user tool. Chrome is a secondary target and is not tested regularly.
+Firefox is the tested target. Chrome is secondary and is not tested regularly.
 
 ## What it does
 
@@ -35,8 +35,8 @@ Release Firefox only installs add-ons Mozilla has signed. Signing on the
 ./sign.sh
 ```
 
-Credentials are read from 1Password automatically; override with
-`AMO_JWT_ISSUER` / `AMO_JWT_SECRET` if needed. The signed `.xpi` lands in
+Set `AMO_JWT_ISSUER` / `AMO_JWT_SECRET` in the environment (the script also
+knows how to read them from a 1Password item, see `sign.sh`). The signed `.xpi` lands in
 `dist/`. Install it via `about:addons` → gear icon → **Install Add-on From
 File…**.
 
@@ -71,6 +71,8 @@ Load `dist/chrome/` unpacked at `chrome://extensions`. Chrome grants host permis
 ### API key
 
 Only needed for **Analyze & sort**. Open the extension popup, paste an Anthropic API key, click **Save**. It is stored in `chrome.storage.sync` and never leaves the extension except in requests to the Anthropic API.
+
+The extension calls the Anthropic API directly from the browser (it sends the `anthropic-dangerous-direct-browser-access` header). That is fine for a key you own and use on your own machine; do not use a key you share with other people or systems, and note that `chrome.storage.sync` syncs the key to any other browser profile signed into the same account.
 
 ## Development
 
@@ -120,4 +122,4 @@ Reordering sends every move in a single `browse/edit_playlist` call. Reads are c
 
 ## Licence
 
-None. Personal project.
+[MIT](LICENSE).
