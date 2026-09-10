@@ -1,4 +1,5 @@
 {
+  "name": "youtube-playlist-organizer",
   "private": true,
   "type": "module",
   "version": "0.6.0",
@@ -8,5 +9,6 @@
   },
   "devDependencies": {
     "canvas": "^3.2.1"
-  }
+  },
+  "license": "MIT"
 }
