@@ -83,6 +83,9 @@ html[dark] .wl-trigger.wl-trigger-inline:hover { background: rgba(255, 255, 255,
 /* No top padding: a sticky heading pins to the scrollport edge, and any
    padding there shows as a strip that scrolled items peek through. */
 .wl-modal-body { overflow-y: auto; padding: 0 24px 8px; }
+/* Anything that is not a sticky heading still needs breathing room below the
+   header border (YouTube's page CSS zeroes <p> margins). */
+.wl-modal-body > :first-child:not(.wl-group-heading) { margin-top: 12px; }
 .wl-modal-footer {
   display: flex;
   flex-wrap: wrap;

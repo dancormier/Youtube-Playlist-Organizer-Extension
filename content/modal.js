@@ -83,9 +83,14 @@ const WLModal = {
   /** The chip row above the playlist items, or null when YouTube's markup has none. */
   findTriggerHost() {
     const hosts = (typeof SELECTORS !== 'undefined' && SELECTORS.TRIGGER_HOSTS) || [];
-    for (const selector of hosts) {
-      const el = document.querySelector(selector);
-      if (el) return el;
+    for (const entry of hosts) {
+      if (typeof entry === 'string') {
+        const el = document.querySelector(entry);
+        if (el) return el;
+      } else if (entry && entry.parentOf) {
+        const child = document.querySelector(entry.parentOf);
+        if (child && child.parentElement) return child.parentElement;
+      }
     }
     return null;
   },

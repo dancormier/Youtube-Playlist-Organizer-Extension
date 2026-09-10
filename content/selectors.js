@@ -7,10 +7,12 @@ const SELECTORS = {
   VIDEO_LINK: 'a#video-title',
   // Where the Organize button lives, first match wins: the playlist's own
   // filter-chip row (Manual ▾ / All / Videos / Shorts). None present → floating.
+  // A string selects the host itself; { parentOf } selects the parent of the
+  // first match, for rows whose container has no id or tag of its own
+  // (the 2026 chip bar: chip-view-model < div < div < chip-bar-view-model).
   TRIGGER_HOSTS: [
-    'ytd-playlist-video-list-renderer ytd-feed-filter-chip-bar-renderer #chips-wrapper',
-    'ytd-playlist-video-list-renderer yt-chip-cloud-renderer #chips',
+    { parentOf: 'chip-bar-view-model chip-view-model' },
     'ytd-feed-filter-chip-bar-renderer #chips-wrapper',
-    'ytd-playlist-video-list-renderer #header',
+    'yt-chip-cloud-renderer #chips',
   ],
 };

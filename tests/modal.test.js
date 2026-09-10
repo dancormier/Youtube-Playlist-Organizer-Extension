@@ -232,6 +232,18 @@ describe('WLModal.mountTrigger placement', () => {
     assert.equal(document._elements.length, 0, 'not appended to body');
   });
 
+  it('mounts in the parent of a { parentOf } match', () => {
+    const document = fakeDocument();
+    const host = fakeHost(null);
+    document._host = { _selector: 'chip-bar-view-model chip-view-model', parentElement: host };
+    const modal = loadGlobal('content/modal.js', 'WLModal', {
+      document, SELECTORS: { TRIGGER_HOSTS: [{ parentOf: 'chip-bar-view-model chip-view-model' }] },
+    });
+    modal.mountTrigger({ onOpen: () => {} });
+    assert.equal(host.children.length, 1);
+    assert.equal(document._elements.length, 0);
+  });
+
   it('falls back to a floating button on body when no host matches', () => {
     const document = fakeDocument();
     const modal = loadGlobal('content/modal.js', 'WLModal', {
