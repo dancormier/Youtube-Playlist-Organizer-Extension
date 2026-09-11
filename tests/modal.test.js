@@ -125,7 +125,7 @@ function fakeUi() {
     addEventListener(ev, fn) { this._listeners[ev] = fn; },
     append(...nodes) { this.children.push(...nodes); },
     appendChild(node) { this.children.push(node); },
-    focus() {},
+    focus() { this._focusCalls = (this._focusCalls || 0) + 1; },
   });
   return { make, document: { createElement: make } };
 }
@@ -348,7 +348,7 @@ describe('WLModal.showPreview sort options', () => {
     assert.equal(listFor('groupOrder').hidden, true);
     assert.equal(rowFor('groupOrder').getAttribute('aria-expanded'), 'false');
     // Focus moves to the row before the list hides, or the browser drops it to <body>.
-    assert.equal(rowFor('groupOrder')._focused, true);
+    assert.equal(rowFor('groupOrder')._focusCalls, 1);
     assert.equal(rowFor('groupOrder').getAttribute('aria-controls'), listFor('groupOrder').id);
   });
 
