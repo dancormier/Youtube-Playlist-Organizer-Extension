@@ -146,7 +146,7 @@ const WLModal = {
       // trigger that mounted floating moves into the row once it exists.
       if (host && !existing.classList.contains('wl-trigger-inline')) {
         existing.classList.add('wl-trigger-inline');
-        host.insertBefore(existing, host.firstChild);
+        host.appendChild(existing);
       }
       return false;
     }
@@ -159,10 +159,13 @@ const WLModal = {
     button.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>Organize`;
     button.addEventListener('click', () => onOpen());
 
-    // First in the row, before YouTube's sort chip; the headings chip goes last.
+    // Appended AFTER YouTube's chips, never before them: the chip bar resolves
+    // a click by the chip's child index, so a foreign first child made every
+    // sort choice apply one click late (measured 2026-09-11). The headings
+    // chip follows this one.
     if (host) {
       button.classList.add('wl-trigger-inline');
-      host.insertBefore(button, host.firstChild);
+      host.appendChild(button);
     } else {
       document.body.appendChild(button);
     }

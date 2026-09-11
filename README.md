@@ -4,14 +4,14 @@ A browser extension that sorts a YouTube playlist — most usefully **Watch Late
 
 ## What it does
 
-- Adds an **Organize** button at the start of the playlist's filter-chip row, before the sort chip (floating at the bottom right if that row is missing)
+- Adds an **Organize** button at the end of the playlist's filter-chip row (floating at the bottom right if that row is missing)
 - **Analyze & sort** — the model you configure groups videos into your categories. Needs an API key (or a local Ollama), takes a few seconds
 - **Sort by duration** — shortest first. Local, instant, no API key
 - **Sort by title** — A to Z. Local, instant, no API key
 - **Sort by channel** — channel name A to Z, then title. Local, instant, no API key
 - Preview the result before applying and, in AI mode, mark a started video as unwatched so it sorts with the rest of its group
 - Applying switches the playlist to **Manual** sort if it is on another sort (a reorder only shows through the Manual view), sends every move in one batched request, then draws group headings into the playlist
-- A **Hide headings / Show headings** chip at the end of the chip row toggles the headings; they are dropped on their own once the playlist's videos change
+- A **Hide headings / Show headings** chip after Organize toggles the headings; they are dropped on their own once the playlist's videos change
 - **Undo last sort** in the Organize dialog puts the playlist back in the order it had before the last apply (as long as no video was added or removed since)
 
 Videos less than 10% watched count as unwatched. YouTube marks a video partially watched after roughly two seconds, so a stricter threshold promoted far too many videos.

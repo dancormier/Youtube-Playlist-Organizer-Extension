@@ -15,13 +15,13 @@ First public release. Everything below landed between the last private build (0.
 - **Sort by title** and **Sort by channel**, next to Sort by duration. No API key needed. ([#5](https://github.com/dancormier/youtube-playlist-organizer/pull/5))
 - Group headings, in the playlist and the preview, show the video count and the time left to watch ("12 videos · 3h 12m"). ([#4](https://github.com/dancormier/youtube-playlist-organizer/pull/4))
 - An eye control on started videos in the preview to sort one as unwatched. ([#5](https://github.com/dancormier/youtube-playlist-organizer/pull/5))
-- A **Hide headings / Show headings** chip at the end of the chip row that toggles the injected headings and remembers the choice. It replaces the dialog's **Hide group headings** button.
+- A **Hide headings / Show headings** chip after Organize that toggles the injected headings and remembers the choice. It replaces the dialog's **Hide group headings** button.
 - **Undo last sort** in the Organize dialog: restores the order from before the most recent apply, refused once the playlist's videos have changed.
 - Applying a sort first switches the playlist to **Manual** sort when another view sort is selected, since a reorder only shows through the Manual view.
 - `CHANGELOG.md`, issue and pull request templates, a tag-triggered release workflow that attaches the Chrome zip and an unsigned Firefox xpi to a GitHub Release.
 
 ### Changed
-- The **Organize** button moved from a floating pill into the playlist's filter-chip row ([#3](https://github.com/dancormier/youtube-playlist-organizer/pull/3)), and then to the front of it, before the sort chip.
+- The **Organize** button moved from a floating pill into the playlist's filter-chip row, after YouTube's chips. ([#3](https://github.com/dancormier/youtube-playlist-organizer/pull/3))
 - The preview modal was restyled in YouTube's own menu vocabulary, light and dark, with menu-row sort options and section-title headings. ([#5](https://github.com/dancormier/youtube-playlist-organizer/pull/5))
 - The settings popup was restyled to match the modal.
 - The `tabs` permission was dropped; the toolbar icon is coloured per tab from a message the content script sends. ([#3](https://github.com/dancormier/youtube-playlist-organizer/pull/3))
