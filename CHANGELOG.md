@@ -15,7 +15,8 @@ First public release. Everything below landed between the last private build (0.
 - **Sort by title** and **Sort by channel**, next to Sort by duration. No API key needed. ([#5](https://github.com/dancormier/youtube-playlist-organizer/pull/5))
 - Group headings, in the playlist and the preview, show the video count and the time left to watch ("12 videos · 3h 12m"). ([#4](https://github.com/dancormier/youtube-playlist-organizer/pull/4))
 - An eye control on started videos in the preview to sort one as unwatched. ([#5](https://github.com/dancormier/youtube-playlist-organizer/pull/5))
-- A **Hide headings / Show headings** chip next to Organize that toggles the injected headings and remembers the choice.
+- A **Hide headings / Show headings** chip next to Organize that toggles the injected headings and remembers the choice. It replaces the dialog's **Hide group headings** button.
+- **Undo last sort** in the Organize dialog: restores the order from before the most recent apply, refused once the playlist's videos have changed.
 - Applying a sort first switches the playlist to **Manual** sort when another view sort is selected, since a reorder only shows through the Manual view.
 - `CHANGELOG.md`, issue and pull request templates, a tag-triggered release workflow that attaches the Chrome zip and an unsigned Firefox xpi to a GitHub Release.
 
@@ -27,6 +28,7 @@ First public release. Everything below landed between the last private build (0.
 - README, PRIVACY, ARCHITECTURE and CONTRIBUTING rewritten for outside users and contributors; MIT licence; CI runs the tests and the build on every pull request. ([#2](https://github.com/dancormier/youtube-playlist-organizer/pull/2), [#3](https://github.com/dancormier/youtube-playlist-organizer/pull/3))
 
 ### Fixed
+- Injected group headings are now the first child of their playlist item, so assistive technology reads the heading before the video.
 - With several Google accounts in one browser profile, the extension read and would have reordered the first account's Watch Later instead of the active account's. ([#3](https://github.com/dancormier/youtube-playlist-organizer/pull/3))
 - A user category named "Other" doubled every video in the sort order. ([#3](https://github.com/dancormier/youtube-playlist-organizer/pull/3))
 - The toolbar icon never returned to gray on Chrome after leaving YouTube. ([#3](https://github.com/dancormier/youtube-playlist-organizer/pull/3))

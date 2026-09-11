@@ -31,8 +31,9 @@ Do this in **both** Firefox and Chrome before opening a pull request that touche
 6. **Analyze & sort.** The preview shows group headings in your category order with a count and time left on each. Open **Sort options**: each of the three rows opens its choices, picking one re-sorts without a second model call (the status says "Re-sorting…", never "Categorizing…"), and the **Group in progress** switch moves started videos between their own top group and their categories. Reopen the popup afterwards: the Sort defaults match what you picked.
 7. **Eye control.** Hover a started video (one that reads `2:14 / 5:24`) and click the eye: it moves into its category as unwatched, its time reads as a total only, and the eye stays visible; click again to undo. An unwatched video has no eye. Tab to a row with the keyboard: the eye appears on focus.
 8. **Apply and headings.** Apply the AI sort. After the reload the headings sit above the right videos, and a **Hide headings** chip sits after Organize. Drag a video to a new position: YouTube's own drag-to-reorder must still work.
-9. **Headings toggle.** Click **Hide headings**: they disappear and the chip reads **Show headings**. Reload: still hidden, chip still says Show. Click it: they come back. Then open Organize → **Hide group headings**: headings and chip both go, and a reload does not bring them back.
-10. **No key.** Switch the provider to one whose key you have not entered and run **Analyze & sort**: the error says to open the settings, and nothing is sent.
+9. **Headings toggle.** Click **Hide headings**: they disappear and the chip reads **Show headings**. Reload: still hidden, chip still says Show. Click it: they come back. In the inspector, each heading is the first child of its `ytd-playlist-video-renderer`; with a screen reader, the heading is announced before the video.
+10. **Undo.** Open Organize: **Undo last sort** is offered. Click it: the playlist returns to the order it had before step 8, the headings and the chip go, and reopening Organize no longer offers Undo. Sort again, remove a video from the playlist, then try Undo: it refuses with "The playlist has changed since that sort".
+11. **No key.** Switch the provider to one whose key you have not entered and run **Analyze & sort**: the error says to open the settings, and nothing is sent.
 
 ## Conventions
 

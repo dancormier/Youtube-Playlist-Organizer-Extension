@@ -149,44 +149,47 @@ function fakeUi() {
   return { make, document: { createElement: make } };
 }
 
-function showModesWith({ present, handlers = {} }) {
+function showModesWith({ canUndo = false, handlers = {} }) {
   const { make, document } = fakeUi();
-  const modal = loadGlobal('content/modal.js', 'WLModal', {
-    document,
-    WLHeadings: { present: () => present },
-  });
+  const modal = loadGlobal('content/modal.js', 'WLModal', { document });
   const body = make('div');
   const footer = make('div');
   modal._body = () => body;
   modal._footer = () => footer;
   modal._handlers = handlers;
+  modal._canUndo = canUndo;
   modal.showModes();
   return { body, footer, labels: footer.children.map(el => el.textContent) };
 }
 
 describe('WLModal.showModes', () => {
-  it('offers no heading controls when no headings are present', () => {
-    const { labels } = showModesWith({ present: false });
+  it('offers only Close when there is nothing to undo', () => {
+    const { labels } = showModesWith({ canUndo: false });
     assert.deepEqual([...labels], ['Close']);
   });
 
-  it('offers the heading controls when headings are present', () => {
-    const { labels } = showModesWith({ present: true });
-    assert.deepEqual([...labels], ['Hide group headings', 'Close']);
+  it('offers Undo last sort when open() was told an undo exists', () => {
+    const { labels } = showModesWith({ canUndo: true });
+    assert.deepEqual([...labels], ['Undo last sort', 'Close']);
   });
 
-  it('wires the hide button to onHideHeadings', () => {
+  it('wires the undo button to onUndo', () => {
     let called = false;
     const { footer } = showModesWith({
-      present: true,
-      handlers: { onHideHeadings: () => { called = true; } },
+      canUndo: true,
+      handlers: { onUndo: () => { called = true; } },
     });
-    footer.children.find(el => el.textContent === 'Hide group headings')._listeners.click();
+    footer.children.find(el => el.textContent === 'Undo last sort')._listeners.click();
     assert.equal(called, true);
   });
 
+  it('never offers Hide group headings: the chip beside Organize owns visibility', () => {
+    const { labels } = showModesWith({ canUndo: true });
+    assert.ok(!labels.includes('Hide group headings'));
+  });
+
   it('offers the AI sort and the three simple sorts as rows, in that order, with their captions', () => {
-    const { body } = showModesWith({ present: false });
+    const { body } = showModesWith({});
     const rows = body.children[0].children;
     assert.equal(body.children[0].className, 'wl-mode-choice');
     assert.deepEqual(rows.map(r => r.className), Array(4).fill('wl-mode-btn'));
@@ -201,7 +204,7 @@ describe('WLModal.showModes', () => {
 
   it('each mode row hands its mode to onSort', () => {
     const modes = [];
-    const { body } = showModesWith({ present: false, handlers: { onSort: (mode) => modes.push(mode) } });
+    const { body } = showModesWith({ handlers: { onSort: (mode) => modes.push(mode) } });
     for (const row of body.children[0].children) row._listeners.click();
     assert.deepEqual(modes, ['ai', 'duration', 'title', 'channel']);
   });
@@ -209,9 +212,9 @@ describe('WLModal.showModes', () => {
   it('does not throw when showModes runs with no handlers registered', () => {
     // Every handler call site uses ?., and the buttons are reachable before
     // open() has wired anything in the tests above.
-    const { footer } = showModesWith({ present: true });
+    const { footer } = showModesWith({ canUndo: true });
     assert.doesNotThrow(() => {
-      footer.children.find(el => el.textContent === 'Hide group headings')._listeners.click();
+      footer.children.find(el => el.textContent === 'Undo last sort')._listeners.click();
     });
   });
 });

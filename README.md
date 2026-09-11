@@ -11,7 +11,8 @@ A browser extension that sorts a YouTube playlist — most usefully **Watch Late
 - **Sort by channel** — channel name A to Z, then title. Local, instant, no API key
 - Preview the result before applying and, in AI mode, mark a started video as unwatched so it sorts with the rest of its group
 - Applying switches the playlist to **Manual** sort if it is on another sort (a reorder only shows through the Manual view), sends every move in one batched request, then draws group headings into the playlist
-- A **Hide headings / Show headings** chip next to Organize toggles the headings; **Hide group headings** in the Organize dialog removes them for good
+- A **Hide headings / Show headings** chip next to Organize toggles the headings; they are dropped on their own once the playlist's videos change
+- **Undo last sort** in the Organize dialog puts the playlist back in the order it had before the last apply (as long as no video was added or removed since)
 
 Videos less than 10% watched count as unwatched. YouTube marks a video partially watched after roughly two seconds, so a stricter threshold promoted far too many videos.
 
@@ -121,7 +122,7 @@ Your key is stored in the browser's extension sync storage and is only ever sent
 ## Limitations
 
 - **It uses YouTube's unofficial InnerTube API**, the one the page itself calls. Google does not endorse this, and YouTube can change it and break the extension at any time.
-- **Reordering writes to the real playlist.** There is no undo other than sorting again.
+- **Reordering writes to the real playlist.** **Undo last sort** restores the order from before the most recent apply, and only that one; it is refused once a video has been added or removed.
 - **Group headings exist only in your browser.** The extension draws them; YouTube stores nothing but the new order, so other devices see the order without the headings.
 - **Playlists over ~2,000 videos are silently truncated.** Reading stops after 20 pages and the result looks complete.
 - **The sort chip is matched by its English label.** Switching the playlist to Manual before applying looks for a menu entry called "Manual"; in another YouTube language, pick Manual yourself before applying.

@@ -56,6 +56,8 @@ function loadPanel(sandbox = {}) {
     WLStorage: {
       getGroupMap: async () => ({}),
       setGroupMap: async () => {},
+      getUndo: async () => ({}),
+      setUndo: async () => {},
     },
     WLHeadings: {
       boundariesFrom: () => [],
@@ -84,7 +86,7 @@ function loadPanel(sandbox = {}) {
  * `mode` seeds currentMode (default 'ai', the only mode whose session accepts
  * toggleUnwatched()/changeSortOptions()); runSort() overwrites it.
  */
-function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, toggleOverride, reload, runTimers, sortOrder, playlistId, setGroupMap, setSortOptions, sortOptions, ensureManual, mode = 'ai' }) {
+function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, toggleOverride, reload, runTimers, sortOrder, playlistId, setGroupMap, setSortOptions, sortOptions, ensureManual, getUndo, setUndo, mode = 'ai' }) {
   const modalCalls = { showBusy: [], showPreview: [], showPreviewOptions: [], showError: [], setStatus: [], headingsToggle: [] };
   const sandbox = {
     chrome: { runtime: { sendMessage } },
@@ -96,6 +98,8 @@ function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, toggleOve
       setGroupMap: setGroupMap || (async () => {}),
       setSortOptions: setSortOptions || (async () => {}),
       getGroupMap: async () => ({}),
+      getUndo: getUndo || (async () => ({})),
+      setUndo: setUndo || (async () => {}),
     },
     WLHeadings: {
       boundariesFrom: (order) => order,
@@ -1136,11 +1140,189 @@ describe('headings toggle', () => {
     }
   });
 
-  it('hideHeadings (the modal button) removes the chip', async () => {
-    const { WLPanel, calls } = loadWithMap(storedMap());
-    await WLPanel.restoreHeadings();
-    await WLPanel.hideHeadings();
-    assert.equal(calls.toggle.at(-1), null);
+});
+
+describe('undo', () => {
+  const order = [{ id: 'a', setVideoId: 'A' }, { id: 'b', setVideoId: 'B' }];
+  const read = [{ id: 'b', setVideoId: 'B' }, { id: 'a', setVideoId: 'A' }];
+
+  it('applySort stores the order read right before the write, after the Manual switch', async () => {
+    const saved = [];
+    const events = [];
+    const { WLPanel } = loadPanelWithStubs({
+      sendMessage: async () => ({ success: true }),
+      ensureManual: async () => { events.push('ensureManual'); return 'switched'; },
+      videos: read,
+      applyOrder: async () => { events.push('applyOrder'); return { applied: true, waitedMs: 1 }; },
+      setUndo: async (state) => { saved.push({ ...state, previous: [...state.previous], current: [...state.current] }); },
+      reload: () => {},
+      runTimers: true,
+      sortOrder: order,
+      playlistId: 'WL',
+    });
+    await WLPanel.applySort();
+    assert.equal(saved.length, 1);
+    assert.deepEqual(saved[0].previous, ['B', 'A']);
+    assert.deepEqual(saved[0].current, ['A', 'B']);
+    assert.equal(saved[0].playlistId, 'WL');
+    assert.deepEqual(events, ['ensureManual', 'applyOrder']);
+  });
+
+  it('applySort clears the undo state when the write never reads back', async () => {
+    const saved = [];
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async () => ({ success: true }),
+      videos: read,
+      applyOrder: async () => ({ applied: false, waitedMs: 10000 }),
+      setUndo: async (state) => { saved.push({ ...state }); },
+      sortOrder: order,
+      playlistId: 'WL',
+    });
+    await WLPanel.applySort();
+    assert.deepEqual(saved, [{}], 'an older undo record would restore the wrong order');
+    assert.equal(modalCalls.showError.length, 1);
+  });
+
+  it('applySort clears the undo state when the previous order could not be read', async () => {
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const saved = [];
+      const { WLPanel } = loadPanelWithStubs({
+        sendMessage: async () => ({ success: true }),
+        ensureManual: async () => 'switched',
+        applyOrder: async () => ({ applied: true, waitedMs: 1 }),
+        setUndo: async (state) => { saved.push({ ...state }); },
+        reload: () => {},
+        runTimers: true,
+        sortOrder: order,
+        playlistId: 'WL',
+      });
+      // videos undefined → WLPlaylist.read resolves undefined → .map throws
+      await WLPanel.applySort();
+      assert.deepEqual(saved, [{}]);
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('openModal offers Undo only for the playlist the undo state belongs to', async () => {
+    const opened = [];
+    const load = (undo) => loadPanel({
+      WLStorage: { getGroupMap: async () => ({}), setGroupMap: async () => {}, getUndo: async () => undo, setUndo: async () => {} },
+      WLModal: {
+        mountTrigger() {}, removeTrigger() {}, syncHeadingsToggle() {}, verifyTrigger() { return { present: false }; },
+        close() {}, open(handlers, options) { opened.push(options.canUndo); }, showBusy() {}, showPreview() {}, showError() {}, setStatus() {},
+      },
+    });
+    await load({ playlistId: 'WL', previous: ['A'], current: ['A'] }).openModal();
+    await load({ playlistId: 'PLother', previous: ['A'], current: ['A'] }).openModal();
+    await load({}).openModal();
+    assert.deepEqual(opened, [true, false, false]);
+  });
+
+  it('openModal does not open after the session changed during the storage read', async () => {
+    let opened = 0;
+    const WLPanel = loadPanel({
+      WLStorage: {
+        getGroupMap: async () => ({}), setGroupMap: async () => {}, setUndo: async () => {},
+        getUndo: async () => { WLPanel._runId++; return {}; },
+      },
+      WLModal: {
+        mountTrigger() {}, removeTrigger() {}, syncHeadingsToggle() {}, verifyTrigger() { return { present: false }; },
+        close() {}, open() { opened++; }, showBusy() {}, showPreview() {}, showError() {}, setStatus() {},
+      },
+    });
+    await WLPanel.openModal();
+    assert.equal(opened, 0);
+  });
+
+  it('undoSort writes the stored previous order, then clears headings and the undo state', async () => {
+    const writes = [];
+    const cleared = { undo: [], map: [] };
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async () => ({ success: true }),
+      ensureManual: async () => 'manual',
+      videos: order,
+      applyOrder: async (playlistId, ordered) => { writes.push([...ordered]); return { applied: true, waitedMs: 1 }; },
+      getUndo: async () => ({ playlistId: 'WL', previous: ['B', 'A'], current: ['A', 'B'] }),
+      setUndo: async (state) => { cleared.undo.push({ ...state }); },
+      setGroupMap: async (map) => { cleared.map.push({ ...map }); },
+      reload: () => {},
+      runTimers: true,
+    });
+    await WLPanel.undoSort();
+    assert.deepEqual(writes, [['B', 'A']]);
+    assert.deepEqual(cleared.map, [{}]);
+    assert.deepEqual(cleared.undo, [{}]);
+    assert.ok(modalCalls.showBusy.some(t => t.startsWith('Sort complete')));
+    assert.equal(modalCalls.showError.length, 0);
+  });
+
+  it('undoSort refuses when the playlist was reordered by hand since the sort', async () => {
+    let wrote = false;
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async () => ({ success: true }),
+      videos: read, // B, A — same entries as `current`, different order
+      applyOrder: async () => { wrote = true; return { applied: true, waitedMs: 1 }; },
+      getUndo: async () => ({ playlistId: 'WL', previous: ['B', 'A'], current: ['A', 'B'] }),
+    });
+    await WLPanel.undoSort();
+    assert.equal(wrote, false, 'a hand reorder is work Undo must not discard');
+    assert.match(modalCalls.showError[0], /changed since/);
+  });
+
+  it('undoSort refuses when the playlist entries changed since the sort, and drops the state', async () => {
+    let wrote = false;
+    const cleared = [];
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async () => ({ success: true }),
+      videos: [{ id: 'a', setVideoId: 'A' }, { id: 'c', setVideoId: 'C' }],
+      applyOrder: async () => { wrote = true; return { applied: true, waitedMs: 1 }; },
+      getUndo: async () => ({ playlistId: 'WL', previous: ['B', 'A'], current: ['A', 'B'] }),
+      setUndo: async (state) => { cleared.push({ ...state }); },
+    });
+    await WLPanel.undoSort();
+    assert.equal(wrote, false);
+    assert.deepEqual(cleared, [{}]);
+    assert.match(modalCalls.showError[0], /changed since/);
+  });
+
+  it('undoSort reports when nothing is stored for this playlist', async () => {
+    let wrote = false;
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async () => ({ success: true }),
+      videos: order,
+      applyOrder: async () => { wrote = true; return { applied: true, waitedMs: 1 }; },
+      getUndo: async () => ({ playlistId: 'PLother', previous: ['B', 'A'] }),
+    });
+    await WLPanel.undoSort();
+    assert.equal(wrote, false);
+    assert.match(modalCalls.showError[0], /Nothing to undo/);
+  });
+
+  it('undoSort abandons the write when the session changes during the read', async () => {
+    let wrote = false;
+    const { WLPanel } = loadPanelWithStubs({
+      sendMessage: async () => ({ success: true }),
+      applyOrder: async () => { wrote = true; return { applied: true, waitedMs: 1 }; },
+      getUndo: async () => { WLPanel._runId++; return { playlistId: 'WL', previous: ['A'] }; },
+      videos: [{ id: 'a', setVideoId: 'A' }],
+    });
+    await WLPanel.undoSort();
+    assert.equal(wrote, false);
+  });
+
+  it('undoSort names Manual sort when the restored order never appears', async () => {
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async () => ({ success: true }),
+      ensureManual: async () => 'failed',
+      videos: order,
+      applyOrder: async () => ({ applied: false, waitedMs: 10000 }),
+      getUndo: async () => ({ playlistId: 'WL', previous: ['B', 'A'], current: ['A', 'B'] }),
+    });
+    await WLPanel.undoSort();
+    assert.match(modalCalls.showError[0], /Manual/);
   });
 });
 
