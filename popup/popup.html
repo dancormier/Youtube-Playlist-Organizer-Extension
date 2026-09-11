@@ -2,90 +2,96 @@
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="color-scheme" content="light dark">
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div class="header">
-    <h1>Playlist Organizer</h1>
-  </div>
-  <div class="perm-banner" id="perm-banner" hidden>
-    <p class="perm-text" id="perm-text">
+  <header class="wl-header">
+    <h1 class="wl-title">Playlist Organizer</h1>
+  </header>
+  <div class="wl-banner" id="perm-banner" hidden>
+    <p class="wl-banner-text" id="perm-text">
       This add-on needs access to YouTube before the Organize button can appear
       on playlist pages.
     </p>
-    <button id="grant-btn">Grant access to YouTube</button>
+    <button type="button" class="wl-btn wl-primary" id="grant-btn">Grant access to YouTube</button>
   </div>
 
-  <form class="settings-form" id="settings-form" autocomplete="off">
-    <div class="field">
-      <label for="provider">Provider</label>
-      <select id="provider"></select>
-    </div>
+  <form class="wl-form" id="settings-form" autocomplete="off">
+    <section class="wl-section">
+      <label class="wl-row" for="provider">
+        <span class="wl-row-label">Provider</span>
+        <select id="provider" class="wl-row-select"></select>
+      </label>
 
-    <div class="field" id="key-field">
-      <div class="label-row">
-        <label for="api-key">API key</label>
-        <a id="key-link" href="#" target="_blank" rel="noopener" hidden>Get a key</a>
+      <div class="wl-field" id="key-field">
+        <div class="wl-field-head">
+          <label for="api-key">API key</label>
+          <a id="key-link" class="wl-link" href="#" target="_blank" rel="noopener" hidden>Get a key</a>
+        </div>
+        <input type="password" id="api-key" placeholder="Paste your key">
       </div>
-      <input type="password" id="api-key" placeholder="Paste your key">
-    </div>
 
-    <div class="field" id="base-url-field" hidden>
-      <label for="base-url">Base URL</label>
-      <input type="url" id="base-url" placeholder="https://host/v1">
-    </div>
-
-    <div class="field">
-      <label for="model-select">Model</label>
-      <div class="row">
-        <select id="model-select"></select>
-        <input type="text" id="model-text" placeholder="model id" hidden>
-        <button type="button" id="load-models-btn">Load models</button>
+      <div class="wl-field" id="base-url-field" hidden>
+        <label for="base-url">Base URL</label>
+        <input type="url" id="base-url" placeholder="https://host/v1">
       </div>
-      <p class="help" id="model-guidance"></p>
-      <p class="help" id="provider-hint"></p>
-    </div>
 
-    <div class="field">
-      <div class="label-row">
-        <label for="taxonomy">Categories</label>
-        <button type="button" class="link-btn" id="reset-taxonomy-btn">Reset to defaults</button>
+      <div class="wl-field">
+        <label for="model-select">Model</label>
+        <div class="wl-inline">
+          <select id="model-select"></select>
+          <input type="text" id="model-text" placeholder="Model id" hidden>
+          <button type="button" class="wl-btn" id="load-models-btn">Load models</button>
+        </div>
+        <p class="wl-help" id="model-guidance"></p>
+        <p class="wl-help" id="provider-hint"></p>
       </div>
-      <textarea id="taxonomy" rows="8" spellcheck="false"></textarea>
-      <p class="help">One per line. Top to bottom is the order groups appear in.</p>
-    </div>
+    </section>
 
-    <div class="field">
-      <label for="max-new">Max new categories</label>
-      <input type="number" id="max-new" min="0" max="10" step="1">
-      <p class="help">How many categories the model may invent when nothing above fits.</p>
-    </div>
+    <section class="wl-section">
+      <div class="wl-field">
+        <div class="wl-field-head">
+          <label for="taxonomy">Categories</label>
+          <button type="button" class="wl-link" id="reset-taxonomy-btn">Reset to defaults</button>
+        </div>
+        <textarea id="taxonomy" rows="8" spellcheck="false"></textarea>
+        <p class="wl-help">One per line. Top to bottom is the order groups appear in.</p>
+      </div>
 
-    <div class="field">
-      <label for="extra">Extra instructions</label>
-      <textarea id="extra" rows="3" placeholder="e.g. Keep cooking and baking separate"></textarea>
-    </div>
+      <label class="wl-row" for="max-new">
+        <span class="wl-row-label">Max new categories</span>
+        <input type="number" id="max-new" class="wl-row-number" min="0" max="10" step="1">
+      </label>
+      <p class="wl-help wl-row-help">How many categories the model may invent when nothing above fits.</p>
 
-    <div class="field">
-      <label for="sort-within-group">Sort: within a group</label>
-      <select id="sort-within-group"></select>
-    </div>
+      <div class="wl-field">
+        <label for="extra">Extra instructions</label>
+        <textarea id="extra" rows="3" placeholder="e.g. Keep cooking and baking separate"></textarea>
+      </div>
+    </section>
 
-    <label class="check-field" for="sort-in-progress">
-      <input type="checkbox" id="sort-in-progress">
-      Sort: group in progress
-    </label>
+    <section class="wl-section">
+      <h2 class="wl-section-title">Sort defaults</h2>
+      <label class="wl-row" for="sort-within-group">
+        <span class="wl-row-label">Within a group</span>
+        <select id="sort-within-group" class="wl-row-select"></select>
+      </label>
+      <label class="wl-row" for="sort-in-progress">
+        <span class="wl-row-label">Group in progress</span>
+        <input type="checkbox" id="sort-in-progress" class="wl-switch" role="switch">
+      </label>
+      <label class="wl-row" for="sort-group-order">
+        <span class="wl-row-label">Group order</span>
+        <select id="sort-group-order" class="wl-row-select"></select>
+      </label>
+      <p class="wl-help wl-row-help">Used by Analyze &amp; sort. The preview has the same controls; changing them there updates these.</p>
+    </section>
 
-    <div class="field">
-      <label for="sort-group-order">Sort: group order</label>
-      <select id="sort-group-order"></select>
-      <p class="help">Defaults for Analyze &amp; sort. The preview has the same controls; changing them there updates these.</p>
-    </div>
-
-    <div class="row">
-      <button type="submit" id="save-btn">Save</button>
-      <p id="status" class="status-text" role="status"></p>
-    </div>
+    <footer class="wl-footer">
+      <p id="status" class="wl-status" role="status"></p>
+      <button type="submit" class="wl-btn wl-primary" id="save-btn">Save</button>
+    </footer>
   </form>
   <script type="module" src="popup.js"></script>
 </body>
