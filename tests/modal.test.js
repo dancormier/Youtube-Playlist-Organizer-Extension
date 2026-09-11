@@ -71,6 +71,11 @@ describe('WLModal.metaFor', () => {
     assert.equal(load().metaFor(video({ cluster: 'Music', inProgress: false, duration: 600, percentWatched: 50 })), '0:00 / 10:00');
   });
 
+  it('shows the real position in a simple (non-AI) sort, where no override exists', () => {
+    const v = { id: 'a', title: 't', channel: 'c', duration: 600, percentWatched: 50, unavailable: false };
+    assert.equal(load().metaFor(v), '5:00 / 10:00');
+  });
+
   it('shows total duration for unwatched videos', () => {
     assert.equal(load().metaFor(video({ duration: 600 })), '10:00');
   });

@@ -104,7 +104,9 @@ const WLModal = {
   metaFor(video) {
     if (video.unavailable) return 'unavailable';
     if (this.hasWatchTime(video)) {
-      const pct = this.isInProgress(video) ? Number(video.percentWatched) || 0 : 0;
+      // Outside AI mode there is no override, so the real position always shows.
+      const started = this.isInProgress(video) || !('cluster' in video);
+      const pct = started ? Number(video.percentWatched) || 0 : 0;
       return `${this.formatDuration(video.duration * pct / 100)} / ${this.formatDuration(video.duration)}`;
     }
     return this.formatDuration(video.duration);
