@@ -19,15 +19,11 @@ Videos less than 10% watched count as unwatched. YouTube marks a video partially
 
 ## Screenshots
 
-<!-- TODO: capture the three images described in docs/screenshots/README.md, then
-     uncomment the lines below and delete this comment. -->
-<!--
-![The preview after Analyze & sort: group headings with counts and time left, sort options above the list](docs/screenshots/modal.png)
-![A playlist after applying: group headings drawn into the list, Organize and Hide headings chips in the filter row](docs/screenshots/headings.png)
-![The settings popup: provider, model list, categories and sort defaults](docs/screenshots/popup.png)
--->
+![The preview after Analyze & sort: group headings with counts and time left, started videos with their position and the eye control, sort options above the list](docs/screenshots/modal.png)
 
-Screenshots are coming; the capture plan is in [docs/screenshots/README.md](docs/screenshots/README.md).
+![A playlist after applying: group headings drawn into the list, Organize and Hide headings chips in the filter row](docs/screenshots/headings.png)
+
+<img src="docs/screenshots/popup.png" width="444" alt="The settings popup: provider, model list, categories and sort defaults">
 
 ## Install from a release
 

@@ -1,8 +1,6 @@
 # Screenshots
 
-The README's **Screenshots** section expects three PNGs in this folder. None exist yet; the image lines in the README are commented out until they do.
-
-Capture all three at **1280×800** (the Chrome Web Store's screenshot size, so the same files serve the listing) in the **light** theme with the browser window's device pixel ratio at 1, or capture at 2560×1600 and downscale. Use a Watch Later or playlist with at least 25 videos so the groupings are visible, and a Google account whose video titles you are happy to publish. Crop nothing out of the page chrome except your own account avatar if you prefer.
+The README's **Screenshots** section uses the three PNGs in this folder. To refresh them after a UI change, capture all three at **1280×800** (the Chrome Web Store's screenshot size, so the same files serve the listing) in the **light** theme with the browser window's device pixel ratio at 1, or capture at 2560×1600 and downscale. Use a Watch Later or playlist with at least 25 videos so the groupings are visible, and a Google account whose video titles you are happy to publish. Crop nothing out of the page chrome except your own account avatar if you prefer.
 
 | File | What it shows | How to get there |
 |---|---|---|
@@ -10,4 +8,4 @@ Capture all three at **1280×800** (the Chrome Web Store's screenshot size, so t
 | `headings.png` | The playlist page after applying, with the injected group headings and the **Organize** and **Hide headings** chips in the filter-chip row | Click **Apply Sort** in the preview, let the page reload, scroll so the chip row and at least two headings are in frame |
 | `popup.png` | The settings popup with a provider chosen, the model list loaded, and the Sort defaults section visible | Click the toolbar icon, click **Load models**, then capture the popup; blank out the API key field first (it is a password field, so it shows dots) |
 
-Name the files exactly as above, then uncomment the three image lines in the README's Screenshots section and delete the TODO line there.
+Name the files exactly as above; the README references them by these names.
