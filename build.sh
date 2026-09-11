@@ -15,6 +15,7 @@ mkdir -p dist/chrome dist/firefox
 SHARED=(
   content/announce.js
   content/selectors.js
+  content/viewsort.js
   content/innertube.js
   content/playlist.js
   content/enrich.js

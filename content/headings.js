@@ -61,11 +61,6 @@ const WLHeadings = {
     return boundaries;
   },
 
-  /** True when any of our headings are currently in the page. */
-  present() {
-    return document.querySelectorAll(`[${this.ATTRIBUTE}]`).length > 0;
-  },
-
   /** Order-independent fingerprint of the video set. */
   hashIds(videos) {
     return videos.map(v => v.id).sort().join(',');
@@ -118,7 +113,9 @@ const WLHeadings = {
   },
 
   /**
-   * Put each group's heading INSIDE that group's first item, never beside it.
+   * Put each group's heading INSIDE that group's first item, never beside it,
+   * and as its FIRST child so a screen reader meets the heading before the
+   * video it introduces.
    *
    * Headings used to be siblings of ytd-playlist-video-renderer inside
    * DIV#contents. That broke YouTube's drag-to-reorder: handleDragMove_ caches
@@ -134,7 +131,7 @@ const WLHeadings = {
    * Idempotent by identity, not position — if a group's heading already exists
    * anywhere in the list it is moved into place rather than duplicated, so this
    * self-heals after a re-render and can be re-run freely as YouTube appends
-   * more items. appendChild() moves an existing node rather than copying it.
+   * more items. insertBefore() moves an existing node rather than copying it.
    */
   inject(boundaries) {
     let placed = 0;
@@ -145,7 +142,7 @@ const WLHeadings = {
 
       const existing = this._headingFor(name);
       const heading = existing || this._build(name, count || 0, remaining);
-      if (heading.parentNode !== item) item.appendChild(heading);
+      if (item.firstChild !== heading) item.insertBefore(heading, item.firstChild);
       item.classList.add(this.ANCHOR_CLASS);
       placed++;
     }

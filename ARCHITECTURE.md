@@ -33,6 +33,7 @@ History is enabled on the account, so a sparse feed isn't the explanation. **Don
 content/     (globals, NOT ES modules, load-ordered by manifest)
   announce.js    —           — one YT_PAGE message so the background can colour this tab's icon
   selectors.js   SELECTORS   — the ONLY YouTube selectors in the project
+  viewsort.js    WLViewSort  — switches the playlist's sort chip to Manual before an apply
   innertube.js   WLInnerTube — config scrape, SAPISIDHASH, call(), paging
   playlist.js    WLPlaylist  — read() → Video[], applyOrder(playlistId, setVideoIds)
   enrich.js      WLEnrich    — player calls, concurrency 6, best-effort
@@ -57,7 +58,7 @@ popup/
 1. `WLPanel.runSort('ai')` reads the playlist through InnerTube, enriches it via `player` calls, and sends `ANALYZE` to the background.
 2. The background loads settings, refuses if the provider needs a key and none is set, builds one prompt from titles/channels/categories plus the user's category list and instructions, and calls the provider: Anthropic's Messages API for `kind: 'anthropic'`, `POST {baseUrl}/chat/completions` for `kind: 'openai'` (OpenAI, Gemini's compatibility endpoint, OpenRouter, Ollama, custom).
 3. `buildSortOrder` orders the result — by default in-progress first, then the user's categories in their order, then model-invented names, then Other and Unavailable; `settings.sort` (or the message's `sortOptions`) changes the in-group order, where in-progress videos go, and the group order — and caches the clusters so `RESORT` (toggling "treat as unwatched", or changing a sort option in the preview) never calls the model again.
-4. Apply sends every move in one `browse/edit_playlist` call, polls until the read converges, stores the group map, and reloads; `WLHeadings` re-injects headings from the stored map on every page load until **Hide group headings** clears it.
+4. Apply first switches the playlist's sort chip to **Manual** through the DOM (`WLViewSort`) — with any other view sort selected the write succeeds but every read keeps the view's order, so the poll below never converges — then sends every move in one `browse/edit_playlist` call, polls until the read converges, stores the group map and the undo state (`{ playlistId, previous, current }` as setVideoId lists; `previous` is a fresh read taken right before the write, after the Manual switch), and reloads. A write that never reads back clears the undo state, since the order is then unknown. `WLHeadings` re-injects headings from the stored map on every page load until the playlist's video set changes or the sort chip stops reading the label recorded with the map (the user picked another view sort, which reorders the list under the headings; `checkViewSort` drops them live too); the **Hide/Show headings** chip after Organize sets a `hidden` flag on the map. **Undo last sort** (offered when the undo state belongs to this playlist) re-reads the playlist, refuses unless it still reads exactly as `current` (an added, removed or hand-moved video since), writes `previous` through the same path, and clears both the group map and the undo state.
 
 ### Hard constraints
 
@@ -66,8 +67,9 @@ Violating these breaks the extension at runtime, not at test time:
 1. **`content/` files are NOT ES modules.** One global each (`const WLThing = {...}`), load-ordered by the manifest. Adding `import`/`export` breaks them in the browser while tests still pass.
 2. **`lib/` files ARE ES modules.** Firefox's background is built by **concatenating** them and `sed`-ing out module syntax. `build.sh` strips `export function`, `export async function`, `export const`, and `import`. **Any other export form silently produces a broken Firefox background script.** This already happened once — `export const` wasn't stripped when `lib/taxonomy.js` was added. A new `lib/` file must also be added to the `LIB` list in `build.sh`, in dependency order; `node --check` on the bundle catches syntax but not a missing file.
 3. **No DOM fallback.** InnerTube failures surface as errors. Deliberate: one path to maintain.
-4. **Only our own UI avoids YouTube selectors.** The trigger and modal are elements we create. Heading injection genuinely must attach to YouTube's list — that dependency is confined to `content/selectors.js`.
+4. **Only our own UI avoids YouTube selectors.** The trigger and modal are elements we create. Heading injection must attach to YouTube's list, and the Manual-sort switch must click YouTube's sort chip — both dependencies are confined to `content/selectors.js`. No InnerTube endpoint for the view-sort preference has been identified; if one is, `WLViewSort` is the only thing to replace.
 5. **Nothing may become a child of `DIV#contents` except playlist items.** YouTube's `handleDragMove_` indexes a rect cache by child position, so one foreign sibling breaks drag-to-reorder for the whole list. Headings therefore mount *inside* their anchor item (see "Headings and drag-to-reorder" below).
+6. **The extension's chips go AFTER YouTube's in the chip row, never before.** The chip bar resolves a click by the chip's child index too: with Organize as the first child, every sort choice applied one click late (the previous pick took effect on the next click or on reload; measured 2026-09-11). Appending keeps YouTube's indices intact.
 
 ## Decisions already made
 
@@ -87,7 +89,7 @@ Violating these breaks the extension at runtime, not at test time:
 
 Injected headings once broke YouTube's drag-to-reorder. The headings were `<h2>` **siblings** of `ytd-playlist-video-renderer` inside `DIV#contents`. YouTube's `handleDragMove_` caches one rect per child of that container and indexes it by child position, so a foreign sibling made an index resolve to `undefined` (`can't access property "top", q is undefined`) on every mousemove. Polymer also wiped the foreign siblings during its own re-render mid-drag.
 
-Each heading is now a **child of the item that starts its group**. `ytd-playlist-video-renderer` has **no shadow root** (probed 2026-07-27; light children are `DIV#index-container`, `DIV#content`, `DIV#menu`; `position: static`), so a light-DOM child renders normally. The anchor item gets a `wl-group-anchor` class supplying `position: relative` and `margin-top`, and the heading is absolutely positioned into that gap with `top: 0; transform: translateY(-100%)`. Being out of flow, it cannot disturb the item's internal flex row. Two tests guard this (`assertChildListIsPureItems` in the inject suite, and the stray-sibling case in drift repair).
+Each heading is now the **first child of the item that starts its group**, so assistive tech reads the heading before the video it introduces. `ytd-playlist-video-renderer` has **no shadow root** (probed 2026-07-27; light children are `DIV#index-container`, `DIV#content`, `DIV#menu`; `position: static`), so a light-DOM child renders normally. The anchor item gets a `wl-group-anchor` class supplying `position: relative` and `margin-top`, and the heading is absolutely positioned into that gap with `top: 0; transform: translateY(-100%)`. Being out of flow, it cannot disturb the item's internal flex row. Two tests guard this (`assertChildListIsPureItems` in the inject suite, and the stray-sibling case in drift repair).
 
 ### Unavailable videos
 

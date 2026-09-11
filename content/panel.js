@@ -1,5 +1,5 @@
 // content/panel.js
-// Depends on: content/selectors.js, content/innertube.js, content/playlist.js, content/enrich.js, content/modal.js, content/storage.js, content/headings.js
+// Depends on: content/selectors.js, content/viewsort.js, content/innertube.js, content/playlist.js, content/enrich.js, content/modal.js, content/storage.js, content/headings.js
 
 const WLPanel = {
   _runId: 0,
@@ -10,31 +10,113 @@ const WLPanel = {
   // The mode of the run that produced currentSortOrder; only 'ai' has a cached
   // analysis for RESORT to work from.
   currentMode: null,
+  // 'shown' or 'hidden' while this playlist has stored headings, else null.
+  // Drives the Show/Hide headings chip beside Organize.
+  _headingsState: null,
 
-  openModal() {
+  /**
+   * Undo is offered only when the stored undo state belongs to this playlist.
+   * The storage read is local and fast; a failure just opens without Undo.
+   */
+  async openModal() {
+    const runId = this._runId;
+    const playlistId = new URL(location.href).searchParams.get('list');
+    let canUndo = false;
+    try {
+      const undo = await WLStorage.getUndo();
+      canUndo = Array.isArray(undo.previous) && undo.playlistId === playlistId;
+    } catch (err) {
+      console.warn('WLPanel: failed to read the undo state', err);
+    }
+    // Navigating away during the read must not open a modal on the new page.
+    if (runId !== this._runId) return;
     WLModal.open({
       onSort: (mode) => this.runSort(mode),
       onApply: () => this.applySort(),
+      onUndo: () => this.undoSort(),
+      onClearHeadings: () => this.clearHeadings(),
       onCancel: () => { this._runId++; this.currentSortOrder = []; this.currentMode = null; },
       onToggleUnwatched: (videoId) => this.toggleUnwatched(videoId),
       onSortOptionsChange: (sortOptions) => this.changeSortOptions(sortOptions),
-      onHideHeadings: () => this.hideHeadings(),
+    }, { canUndo, hasHeadings: this._headingsState !== null });
+  },
+
+  /** The dialog's Clear headings button: drop them for good and close. */
+  clearHeadings() {
+    this._dropHeadings();
+    WLModal.close();
+  },
+
+  _setHeadingsState(state) {
+    this._headingsState = state;
+    WLModal.syncHeadingsToggle(state, { onToggle: () => this.toggleHeadings() });
+  },
+
+  // The sort chip's label while the view was Manual, recorded with the group
+  // map. Language-independent: whatever the label was, a different one means
+  // the user picked another view sort.
+  _viewSortLabel: null,
+
+  _viewSortChanged() {
+    if (!this._viewSortLabel) return false;
+    const label = WLViewSort.current();
+    return label !== null && label !== this._viewSortLabel;
+  },
+
+  /**
+   * A view sort other than Manual reorders the list under the headings, so
+   * the grouping no longer describes what is on screen: treat the sort as
+   * having undone ours. Called from syncTrigger on every mutation batch, so
+   * it is one querySelector when nothing is stored.
+   */
+  checkViewSort() {
+    if (!this._headingsState || !this._viewSortChanged()) return;
+    this._dropHeadings();
+  },
+
+  _dropHeadings() {
+    WLHeadings.stop();
+    WLHeadings.clear();
+    this._viewSortLabel = null;
+    this._setHeadingsState(null);
+    WLStorage.setGroupMap({}).catch((err) => {
+      console.warn('WLPanel: failed to clear the group map after a view sort change', err);
     });
   },
 
   /**
-   * Remove the headings and stop them coming back. Clearing the stored group
-   * map is the part that makes this stick — without it, restoreHeadings()
-   * re-injects everything on the next page load.
+   * The chip beside Organize: hide the headings but keep the stored map, or
+   * put them back. The `hidden` flag on the map makes the choice survive a
+   * reload, where restoreHeadings() reads it.
    */
-  async hideHeadings() {
-    WLHeadings.stop();
-    WLHeadings.clear();
-    WLModal.close();
+  async toggleHeadings() {
+    const runId = this._runId;
+    const playlistId = new URL(location.href).searchParams.get('list');
+    let stored;
     try {
-      await WLStorage.setGroupMap({});
+      stored = await WLStorage.getGroupMap();
     } catch (err) {
-      console.warn('WLPanel: failed to clear the stored group map; headings will return on reload', err);
+      console.warn('WLPanel: failed to read stored group map', err);
+      return;
+    }
+    if (runId !== this._runId) return;
+    if (!stored.boundaries || stored.playlistId !== playlistId) {
+      this._setHeadingsState(null);
+      return;
+    }
+
+    const hidden = this._headingsState === 'shown';
+    if (hidden) {
+      WLHeadings.stop();
+      WLHeadings.clear();
+    } else {
+      WLHeadings.watch(stored.boundaries);
+    }
+    this._setHeadingsState(hidden ? 'hidden' : 'shown');
+    try {
+      await WLStorage.setGroupMap({ ...stored, hidden });
+    } catch (err) {
+      console.warn('WLPanel: failed to save the headings visibility; it will reset on reload', err);
     }
   },
 
@@ -167,76 +249,210 @@ const WLPanel = {
   },
 
   /**
-   * Captures (does not bump) the run token, for the same reason as
-   * toggleUnwatched(): a superseded apply must not reload the page — or even
-   * announce success into the modal — out from under a newer session.
+   * Switch the view to Manual, then write `ordered` and wait for it to show.
+   * Shared by applySort() and undoSort(). Captures (does not bump) the run
+   * token: a superseded write must not announce anything into the modal.
+   * @returns {{ result, viewSort, previous } | null} null when superseded or
+   *   when the write threw (already shown as an error).
    */
+  async _writeOrder(runId, playlistId, ordered) {
+    // The reorder only shows through the Manual view (content/viewsort.js).
+    // Still cancellable: nothing has been written yet.
+    WLModal.showBusy('Checking the playlist sort...');
+    let viewSort;
+    try {
+      viewSort = await WLViewSort.ensureManual();
+    } catch (err) {
+      console.warn('WLPanel: could not check the playlist sort', err);
+      viewSort = 'failed';
+    }
+    if (runId !== this._runId) return null;
+
+    // The order Undo falls back to, read right before the write: the session's
+    // earlier read may predate a view switch or a drag the user made since.
+    WLModal.showBusy('Reading playlist...');
+    let previous;
+    try {
+      const videos = await WLPlaylist.read(playlistId);
+      previous = videos.map(v => v.setVideoId);
+    } catch (err) {
+      console.warn('WLPanel: could not read the order before writing; Undo will be unavailable', err);
+      previous = null;
+    }
+    if (runId !== this._runId) return null;
+
+    // Uninterruptible from here: applyOrder() sends the reorder immediately, so
+    // "cancelling" would only hide the modal and skip the reload while the
+    // playlist changed underneath.
+    WLModal.showBusy(`Applying ${ordered.length} moves...`, { cancellable: false });
+
+    let result;
+    try {
+      result = await WLPlaylist.applyOrder(playlistId, ordered);
+    } catch (err) {
+      if (runId === this._runId) WLModal.showError(err.message);
+      return null;
+    }
+    if (runId !== this._runId) return null;
+    return { result, viewSort, previous };
+  },
+
+  /**
+   * The write was sent but never read back, so the playlist's order is
+   * unknown; an older undo record would restore the wrong thing.
+   */
+  async _writeNotApplied(runId, viewSort) {
+    try {
+      await WLStorage.setUndo({});
+    } catch (err) {
+      console.warn('WLPanel: failed to clear the undo state', err);
+    }
+    if (runId !== this._runId) return;
+    // Anything but a confirmed Manual view is the likeliest cause, including
+    // a chip the selector no longer finds.
+    const manualUnconfirmed = viewSort !== 'manual' && viewSort !== 'switched';
+    WLModal.showError(manualUnconfirmed
+      ? 'Sort was sent but the new order did not appear. This playlist is not on Manual sort: pick Manual in the sort menu above the list, then try again.'
+      : 'Sort was sent but the new order did not appear. Reload and check the playlist.');
+  },
+
+  /**
+   * YouTube's DOM does not reflect the reordered playlist, so a successful
+   * write otherwise looks like nothing happened. Ownership is re-checked
+   * inside the callback itself, not just when scheduling it — the 1.2s window
+   * is long enough for the user to click into a video and navigate away, and
+   * without this the timer would reload the page they just opened.
+   */
+  _announceAndReload(runId, waitedMs) {
+    WLModal.showBusy(`Sort complete in ${(waitedMs / 1000).toFixed(1)}s. Refreshing...`, { cancellable: false });
+    setTimeout(() => { if (runId === this._runId) location.reload(); }, 1200);
+  },
+
   async applySort() {
     const runId = this._runId;
     const playlistId = this.currentPlaylistId;
     const orderedSetVideoIds = this.currentSortOrder.map(v => v.setVideoId);
 
-    // Uninterruptible from here: applyOrder() sends the reorder immediately, so
-    // "cancelling" would only hide the modal and skip the reload while the
-    // playlist changed underneath.
-    WLModal.showBusy(`Applying ${orderedSetVideoIds.length} moves...`, { cancellable: false });
+    const written = await this._writeOrder(runId, playlistId, orderedSetVideoIds);
+    if (!written) return;
+    const { result, viewSort, previous } = written;
 
-    let result;
+    if (!result.applied) {
+      await this._writeNotApplied(runId, viewSort);
+      return;
+    }
+
+    // Persist BEFORE the reload — the reload is what makes headings necessary,
+    // and it destroys any in-memory state that isn't written first.
+    // Headings are a convenience; the reorder above is the actual work and it
+    // already succeeded — so a storage failure here must not block the reload
+    // or leave the modal stuck. It gets its own try/catch rather than joining
+    // the applyOrder one, and failure is logged but otherwise swallowed.
+    // Duration-mode sorts yield an empty boundaries array (no `cluster` key
+    // at all on any video — see WLHeadings.boundariesFrom).
+    const boundaries = WLHeadings.boundariesFrom(this.currentSortOrder);
     try {
-      result = await WLPlaylist.applyOrder(playlistId, orderedSetVideoIds);
+      if (boundaries.length > 0) {
+        await WLStorage.setGroupMap({
+          playlistId,
+          boundaries,
+          videoIdsHash: WLHeadings.hashIds(this.currentSortOrder),
+          viewSortLabel: WLViewSort.current(),
+        });
+      } else {
+        // The stored map must be CLEARED here, not left alone. Skipping the
+        // write is not neutral: a previous AI sort's grouping survives it,
+        // and restoreHeadings() then re-injects those headings after the
+        // reload, scattered through the new duration order. Its staleness
+        // check does not catch this — hashIds is order-independent, so
+        // reordering the same set of videos never trips it.
+        WLHeadings.stop();
+        WLHeadings.clear();
+        this._setHeadingsState(null);
+        await WLStorage.setGroupMap({});
+      }
+    } catch (err) {
+      console.warn('WLPanel: failed to persist group map; headings may be stale after reload', err);
+    }
+    // Same reasoning: Undo is a convenience over a write that already landed.
+    try {
+      await WLStorage.setUndo(previous ? { playlistId, previous, current: orderedSetVideoIds } : {});
+    } catch (err) {
+      console.warn('WLPanel: failed to persist the undo state', err);
+    }
+    // Re-check ownership: the awaits above are a window resetForNavigation()'s
+    // synchronous _runId bump can land in, same as every other await in this
+    // method. Without this, a navigate-away mid-persist would still announce
+    // "Sort complete" and reload the page the user already left.
+    if (runId !== this._runId) return;
+
+    this._announceAndReload(runId, result.waitedMs);
+  },
+
+  /**
+   * Put the playlist back in the order it had before the last apply. Headings
+   * describe the order that is being undone, so the stored map goes with it.
+   * Refuses unless the playlist still reads exactly as that apply left it: an
+   * added or removed video means a stale setVideoId list, and a hand
+   * reorder since is work Undo must not throw away.
+   */
+  async undoSort() {
+    const runId = this._runId;
+    const playlistId = new URL(location.href).searchParams.get('list');
+    this.currentPlaylistId = playlistId;
+
+    WLModal.showBusy('Reading playlist...');
+    let undo;
+    let videos;
+    try {
+      undo = await WLStorage.getUndo();
+      if (runId !== this._runId) return;
+      if (!Array.isArray(undo.previous) || undo.playlistId !== playlistId) {
+        WLModal.showError('Nothing to undo for this playlist.');
+        return;
+      }
+      videos = await WLPlaylist.read(playlistId);
     } catch (err) {
       if (runId === this._runId) WLModal.showError(err.message);
       return;
     }
     if (runId !== this._runId) return;
 
-    if (result.applied) {
-      // Persist BEFORE the reload — the reload is what makes headings necessary,
-      // and it destroys any in-memory state that isn't written first.
-      // Headings are a convenience; the reorder above is the actual work and it
-      // already succeeded — so a storage failure here must not block the reload
-      // or leave the modal stuck. It gets its own try/catch rather than joining
-      // the applyOrder one, and failure is logged but otherwise swallowed.
-      // Duration-mode sorts yield an empty boundaries array (no `cluster` key
-      // at all on any video — see WLHeadings.boundariesFrom).
-      const boundaries = WLHeadings.boundariesFrom(this.currentSortOrder);
+    const unchanged = Array.isArray(undo.current)
+      && videos.length === undo.current.length
+      && videos.every((v, i) => v.setVideoId === undo.current[i]);
+    if (!unchanged) {
       try {
-        if (boundaries.length > 0) {
-          await WLStorage.setGroupMap({
-            playlistId,
-            boundaries,
-            videoIdsHash: WLHeadings.hashIds(this.currentSortOrder),
-          });
-        } else {
-          // The stored map must be CLEARED here, not left alone. Skipping the
-          // write is not neutral: a previous AI sort's grouping survives it,
-          // and restoreHeadings() then re-injects those headings after the
-          // reload, scattered through the new duration order. Its staleness
-          // check does not catch this — hashIds is order-independent, so
-          // reordering the same set of videos never trips it.
-          WLHeadings.stop();
-          WLHeadings.clear();
-          await WLStorage.setGroupMap({});
-        }
+        await WLStorage.setUndo({});
       } catch (err) {
-        console.warn('WLPanel: failed to persist group map; headings may be stale after reload', err);
+        console.warn('WLPanel: failed to clear a stale undo state', err);
       }
-      // Re-check ownership: the await above is a window resetForNavigation()'s
-      // synchronous _runId bump can land in, same as every other await in this
-      // method. Without this, a navigate-away mid-persist would still announce
-      // "Sort complete" and reload the page the user already left.
-      if (runId !== this._runId) return;
-
-      WLModal.showBusy(`Sort complete in ${(result.waitedMs / 1000).toFixed(1)}s. Refreshing...`, { cancellable: false });
-      // YouTube's DOM does not reflect the reordered playlist, so a successful
-      // sort otherwise looks like nothing happened. Re-check ownership inside
-      // the callback itself, not just when scheduling it — the 1.2s window is
-      // long enough for the user to click into a video and navigate away, and
-      // without this the timer would reload the page they just opened.
-      setTimeout(() => { if (runId === this._runId) location.reload(); }, 1200);
-    } else {
-      WLModal.showError('Sort was sent but the new order did not appear. Reload and check the playlist.');
+      if (runId === this._runId) {
+        WLModal.showError('The playlist has changed since that sort, so it cannot be undone.');
+      }
+      return;
     }
+    const written = await this._writeOrder(runId, playlistId, undo.previous);
+    if (!written) return;
+    const { result, viewSort } = written;
+
+    if (!result.applied) {
+      await this._writeNotApplied(runId, viewSort);
+      return;
+    }
+
+    try {
+      WLHeadings.stop();
+      WLHeadings.clear();
+      this._setHeadingsState(null);
+      await WLStorage.setGroupMap({});
+      await WLStorage.setUndo({});
+    } catch (err) {
+      console.warn('WLPanel: failed to clear state after undo', err);
+    }
+    if (runId !== this._runId) return;
+
+    this._announceAndReload(runId, result.waitedMs);
   },
 
   _headingsRestoredFor: null,
@@ -297,7 +513,17 @@ const WLPanel = {
     // document.body observer after navigating to a non-playlist page — one
     // that would then survive the rest of the session.
     if (runId !== this._runId) return;
+    this._viewSortLabel = stored.viewSortLabel || null;
+    if (this._viewSortChanged()) {
+      this._dropHeadings();
+      return;
+    }
+    if (stored.hidden) {
+      this._setHeadingsState('hidden');
+      return;
+    }
     WLHeadings.watch(stored.boundaries);
+    this._setHeadingsState('shown');
   },
 };
 
@@ -371,6 +597,8 @@ function syncTrigger(source) {
     });
   }
 
+  WLPanel.checkViewSort();
+  WLModal.syncHeadingsToggle(WLPanel._headingsState, { onToggle: () => WLPanel.toggleHeadings() });
   WLPanel.restoreHeadings();
 }
 
@@ -385,6 +613,8 @@ function resetForNavigation() {
   WLHeadings.stop();
   WLHeadings.clear();
   WLPanel._headingsRestoredFor = null;
+  WLPanel._headingsState = null;
+  WLPanel._viewSortLabel = null;
 }
 
 let lastUrl = location.href;

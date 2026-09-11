@@ -67,8 +67,9 @@ describe('WLModal.metaFor', () => {
     assert.equal(load().metaFor(video({ cluster: null, duration: 600, percentWatched: 50 })), '5:00 / 10:00');
   });
 
-  it('shows a zero position for a started video the user marked unwatched', () => {
-    assert.equal(load().metaFor(video({ cluster: 'Music', inProgress: false, duration: 600, percentWatched: 50 })), '0:00 / 10:00');
+  it('shows only the total for a started video the user marked unwatched', () => {
+    // The pressed eye already marks the override; "0:00 / 10:00" read as a bug.
+    assert.equal(load().metaFor(video({ cluster: 'Music', inProgress: false, duration: 600, percentWatched: 50 })), '10:00');
   });
 
   it('shows the real position in a simple (non-AI) sort, where no override exists', () => {
@@ -148,44 +149,61 @@ function fakeUi() {
   return { make, document: { createElement: make } };
 }
 
-function showModesWith({ present, handlers = {} }) {
+function showModesWith({ canUndo = false, hasHeadings = false, handlers = {} }) {
   const { make, document } = fakeUi();
-  const modal = loadGlobal('content/modal.js', 'WLModal', {
-    document,
-    WLHeadings: { present: () => present },
-  });
+  const modal = loadGlobal('content/modal.js', 'WLModal', { document });
   const body = make('div');
   const footer = make('div');
   modal._body = () => body;
   modal._footer = () => footer;
   modal._handlers = handlers;
+  modal._canUndo = canUndo;
+  modal._hasHeadings = hasHeadings;
   modal.showModes();
   return { body, footer, labels: footer.children.map(el => el.textContent) };
 }
 
 describe('WLModal.showModes', () => {
-  it('offers no heading controls when no headings are present', () => {
-    const { labels } = showModesWith({ present: false });
+  it('offers only Close when there is nothing to undo', () => {
+    const { labels } = showModesWith({ canUndo: false });
     assert.deepEqual([...labels], ['Close']);
   });
 
-  it('offers the heading controls when headings are present', () => {
-    const { labels } = showModesWith({ present: true });
-    assert.deepEqual([...labels], ['Hide group headings', 'Close']);
+  it('offers Undo last sort when open() was told an undo exists', () => {
+    const { labels } = showModesWith({ canUndo: true });
+    assert.deepEqual([...labels], ['Undo last sort', 'Close']);
   });
 
-  it('wires the hide button to onHideHeadings', () => {
+  it('wires the undo button to onUndo', () => {
     let called = false;
     const { footer } = showModesWith({
-      present: true,
-      handlers: { onHideHeadings: () => { called = true; } },
+      canUndo: true,
+      handlers: { onUndo: () => { called = true; } },
     });
-    footer.children.find(el => el.textContent === 'Hide group headings')._listeners.click();
+    footer.children.find(el => el.textContent === 'Undo last sort')._listeners.click();
+    assert.equal(called, true);
+  });
+
+  it('never offers Hide group headings: the chip beside Organize owns visibility', () => {
+    const { labels } = showModesWith({ canUndo: true });
+    assert.ok(!labels.includes('Hide group headings'));
+  });
+
+  it('offers Clear headings before Undo when the playlist has stored headings', () => {
+    const { labels } = showModesWith({ canUndo: true, hasHeadings: true });
+    assert.deepEqual([...labels], ['Clear headings', 'Undo last sort', 'Close']);
+    assert.deepEqual([...showModesWith({ hasHeadings: true }).labels], ['Clear headings', 'Close']);
+  });
+
+  it('wires Clear headings to onClearHeadings', () => {
+    let called = false;
+    const { footer } = showModesWith({ hasHeadings: true, handlers: { onClearHeadings: () => { called = true; } } });
+    footer.children.find(el => el.textContent === 'Clear headings')._listeners.click();
     assert.equal(called, true);
   });
 
   it('offers the AI sort and the three simple sorts as rows, in that order, with their captions', () => {
-    const { body } = showModesWith({ present: false });
+    const { body } = showModesWith({});
     const rows = body.children[0].children;
     assert.equal(body.children[0].className, 'wl-mode-choice');
     assert.deepEqual(rows.map(r => r.className), Array(4).fill('wl-mode-btn'));
@@ -200,7 +218,7 @@ describe('WLModal.showModes', () => {
 
   it('each mode row hands its mode to onSort', () => {
     const modes = [];
-    const { body } = showModesWith({ present: false, handlers: { onSort: (mode) => modes.push(mode) } });
+    const { body } = showModesWith({ handlers: { onSort: (mode) => modes.push(mode) } });
     for (const row of body.children[0].children) row._listeners.click();
     assert.deepEqual(modes, ['ai', 'duration', 'title', 'channel']);
   });
@@ -208,9 +226,9 @@ describe('WLModal.showModes', () => {
   it('does not throw when showModes runs with no handlers registered', () => {
     // Every handler call site uses ?., and the buttons are reachable before
     // open() has wired anything in the tests above.
-    const { footer } = showModesWith({ present: true });
+    const { footer } = showModesWith({ canUndo: true });
     assert.doesNotThrow(() => {
-      footer.children.find(el => el.textContent === 'Hide group headings')._listeners.click();
+      footer.children.find(el => el.textContent === 'Undo last sort')._listeners.click();
     });
   });
 });
@@ -585,7 +603,16 @@ function fakeDocument() {
 }
 
 function fakeHost(selector) {
-  const host = { _selector: selector, children: [], appendChild(el) { this.children.push(el); } };
+  const host = {
+    _selector: selector,
+    children: [{ id: 'yt-sort-chip' }],
+    appendChild(el) { this.children.push(el); },
+    insertBefore(el, ref) {
+      const i = ref ? this.children.indexOf(ref) : -1;
+      this.children.splice(i === -1 ? this.children.length : i, 0, el);
+    },
+    get firstChild() { return this.children[0] ?? null; },
+  };
   return host;
 }
 
@@ -622,8 +649,9 @@ describe('WLModal.mountTrigger placement', () => {
       document, SELECTORS: { TRIGGER_HOSTS: ['nope', selector] },
     });
     modal.mountTrigger({ onOpen: () => {} });
-    assert.equal(document._host.children.length, 1);
-    assert.match(document._host.children[0].className, /wl-trigger-inline/);
+    assert.equal(document._host.children.length, 2);
+    assert.equal(document._host.children[0].id, 'yt-sort-chip', 'YouTube\'s chips keep their child indices');
+    assert.match(document._host.children[1].className, /wl-trigger-inline/);
     assert.equal(document._elements.length, 0, 'not appended to body');
   });
 
@@ -637,8 +665,8 @@ describe('WLModal.mountTrigger placement', () => {
     assert.equal(document._elements.length, 1, 'floating first');
     document._host = fakeHost(selector);
     assert.equal(modal.mountTrigger({ onOpen: () => {} }), false, 'no second button');
-    assert.equal(document._host.children.length, 1, 'moved into the row');
-    assert.match(document._host.children[0].className, /wl-trigger-inline/);
+    assert.equal(document._host.children.length, 2, 'moved into the row');
+    assert.match(document._host.children[1].className, /wl-trigger-inline/);
   });
 
   it('mounts in the parent of a { parentOf } match', () => {
@@ -649,7 +677,8 @@ describe('WLModal.mountTrigger placement', () => {
       document, SELECTORS: { TRIGGER_HOSTS: [{ parentOf: 'chip-bar-view-model chip-view-model' }] },
     });
     modal.mountTrigger({ onOpen: () => {} });
-    assert.equal(host.children.length, 1);
+    assert.equal(host.children.length, 2);
+    assert.equal(host.children[1].id, 'wl-trigger');
     assert.equal(document._elements.length, 0);
   });
 
@@ -809,5 +838,137 @@ describe('WLModal.showBusy cancellability', () => {
     modal.showError('something broke');
 
     assert.equal(modal._cancellable, true);
+  });
+});
+
+describe('WLModal.syncHeadingsToggle', () => {
+  /** A trigger already mounted in a parent, with enough DOM for insertBefore. */
+  function mounted(inline) {
+    const document = fakeDocument();
+    const modal = loadGlobal('content/modal.js', 'WLModal', { document });
+    const parent = {
+      children: [],
+      insertBefore(node, ref) {
+        const i = ref ? this.children.indexOf(ref) : -1;
+        const j = this.children.indexOf(node);
+        if (j !== -1) this.children.splice(j, 1);
+        this.children.splice(i === -1 ? this.children.length : i, 0, node);
+        node.parentNode = this;
+      },
+      appendChild(node) { this.insertBefore(node, null); },
+      get lastElementChild() { return this.children[this.children.length - 1] ?? null; },
+    };
+    const trigger = document.createElement('button');
+    trigger.id = 'wl-trigger';
+    trigger.className = inline ? 'wl-trigger wl-trigger-inline' : 'wl-trigger';
+    document.body.appendChild(trigger);
+    parent.insertBefore(trigger, null);
+    const after = () => parent.children[parent.children.indexOf(trigger) + 1] ?? null;
+    Object.defineProperty(trigger, 'nextSibling', { get: after });
+    Object.defineProperty(trigger, 'nextElementSibling', { get: after });
+    const original = document.querySelector.bind(document);
+    document.querySelector = (sel) => (sel === '#wl-headings-toggle'
+      ? document._elements.find(el => el.id === 'wl-headings-toggle') ?? null
+      : original(sel));
+    document.body.appendChild = (el) => { document._elements.push(el); };
+    const toggle = () => document._elements.find(el => el.id === 'wl-headings-toggle') ?? null;
+    return { modal, document, parent, trigger, toggle };
+  }
+
+  // fakeDocument's createElement does not track elements until appended;
+  // register anything the method creates so querySelector can find it later.
+  function track(document) {
+    const create = document.createElement.bind(document);
+    document.createElement = (tag) => { const el = create(tag); el.setAttribute = (k, v) => { el[`_${k}`] = v; }; el.getAttribute = (k) => el[`_${k}`] ?? null; document._elements.push(el); return el; };
+  }
+
+  it('does nothing without a state, and removes a stale button', () => {
+    const { modal, document, toggle } = mounted(true);
+    track(document);
+    modal.syncHeadingsToggle(null);
+    assert.equal(toggle(), null);
+    modal.syncHeadingsToggle('shown');
+    assert.ok(toggle());
+    modal.syncHeadingsToggle(null);
+    assert.equal(toggle(), null, 'removed once the playlist has no headings');
+  });
+
+  it('appends the chip at the end of the row, after Organize, in the trigger\'s shape', () => {
+    const { modal, document, parent, trigger, toggle } = mounted(true);
+    track(document);
+    parent.insertBefore({ id: 'yt-sort-chip' }, trigger);
+    parent.insertBefore({ id: 'yt-all-chip' }, trigger);
+    modal.syncHeadingsToggle('shown', { onToggle: () => {} });
+    const button = toggle();
+    assert.equal(parent.children[2], trigger);
+    assert.deepEqual(parent.children.map(el => el.id), ['yt-sort-chip', 'yt-all-chip', 'wl-trigger', 'wl-headings-toggle']);
+    assert.match(button.className, /wl-trigger-inline/);
+    assert.match(button.innerHTML, /Hide headings/);
+    assert.equal(button.getAttribute('aria-pressed'), 'true');
+  });
+
+  it('relabels in place for the hidden state and keeps one button', () => {
+    const { modal, document, parent, toggle } = mounted(true);
+    track(document);
+    modal.syncHeadingsToggle('shown');
+    modal.syncHeadingsToggle('hidden');
+    modal.syncHeadingsToggle('hidden');
+    const buttons = document._elements.filter(el => el.id === 'wl-headings-toggle');
+    assert.equal(buttons.length, 1);
+    assert.equal(parent.children.length, 2);
+    assert.match(toggle().innerHTML, /Show headings/);
+    assert.equal(toggle().getAttribute('aria-pressed'), 'false');
+  });
+
+  it('moves back to the end of the row when YouTube appends a chip after it', () => {
+    const { modal, document, parent, trigger, toggle } = mounted(true);
+    track(document);
+    modal.syncHeadingsToggle('shown');
+    parent.insertBefore({ id: 'yt-chip' }, null);
+    assert.equal(parent.children[1], toggle());
+    modal.syncHeadingsToggle('shown');
+    assert.deepEqual(parent.children.map(el => el.id), ['wl-trigger', 'yt-chip', 'wl-headings-toggle']);
+    assert.equal(parent.children[0], trigger);
+  });
+
+  it('floating: sits right after the floating trigger', () => {
+    const { modal, document, parent, trigger, toggle } = mounted(false);
+    track(document);
+    modal.syncHeadingsToggle('shown');
+    assert.deepEqual(parent.children, [trigger, toggle()]);
+  });
+
+  it('routes a click to onToggle', () => {
+    const { modal, document, toggle } = mounted(false);
+    track(document);
+    let toggled = 0;
+    modal.syncHeadingsToggle('shown', { onToggle: () => { toggled++; } });
+    toggle()._listeners.click();
+    assert.equal(toggled, 1);
+    assert.doesNotMatch(toggle().className, /wl-trigger-inline/, 'floating trigger, floating chip');
+  });
+
+  it('is a no-op when the trigger is not mounted', () => {
+    const document = fakeDocument();
+    const modal = loadGlobal('content/modal.js', 'WLModal', { document });
+    modal.syncHeadingsToggle('shown');
+    assert.equal(document._elements.length, 0);
+  });
+});
+
+describe('WLModal.removeTrigger with the headings chip', () => {
+  it('removes both chips', () => {
+    const document = fakeDocument();
+    const modal = loadGlobal('content/modal.js', 'WLModal', { document });
+    const original = document.querySelector.bind(document);
+    document.querySelector = (sel) => (sel === '#wl-headings-toggle'
+      ? document._elements.find(el => el.id === 'wl-headings-toggle') ?? null
+      : original(sel));
+    modal.mountTrigger({ onOpen: () => {} });
+    const chip = document.createElement('button');
+    chip.id = 'wl-headings-toggle';
+    document.body.appendChild(chip);
+    modal.removeTrigger();
+    assert.equal(document._elements.length, 0);
   });
 });

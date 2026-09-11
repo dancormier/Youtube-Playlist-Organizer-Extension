@@ -100,6 +100,21 @@ describe('WLStorage group map', () => {
   });
 });
 
+describe('WLStorage undo state', () => {
+  it('round-trips the last reorder', async () => {
+    const { api } = load();
+    await api.setUndo({ playlistId: 'WL', previous: ['A', 'B'], current: ['B', 'A'] });
+    const undo = await api.getUndo();
+    assert.equal(undo.playlistId, 'WL');
+    assert.deepEqual([...undo.previous], ['A', 'B']);
+  });
+
+  it('returns an empty object when nothing is stored', async () => {
+    const { api } = load();
+    assert.deepEqual({ ...(await api.getUndo()) }, {});
+  });
+});
+
 describe('WLStorage.setSortOptions', () => {
   function loadWithSync(initial = {}) {
     const sync = { ...initial };

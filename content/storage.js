@@ -54,6 +54,22 @@ const WLStorage = {
     return this._queue;
   },
 
+  /** The last applied reorder: `{ playlistId, previous, current }` as setVideoId lists, or {}. */
+  async getUndo() {
+    const data = await chrome.storage.local.get('undoState');
+    return data.undoState || {};
+  },
+
+  setUndo(state) {
+    this._queue = this._queue.then(async () => {
+      await chrome.storage.local.set({ undoState: state });
+    }).catch((err) => {
+      this._queue = Promise.resolve();
+      throw err;
+    });
+    return this._queue;
+  },
+
   setGroupMap(map) {
     this._queue = this._queue.then(async () => {
       await chrome.storage.local.set({ groupMap: map });

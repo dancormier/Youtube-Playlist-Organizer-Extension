@@ -237,6 +237,13 @@ function fakePlaylist(videoIds) {
       getAttribute: () => null,
       hasAttribute: () => false,
       appendChild(child) { attach(el, child); },
+      insertBefore(child, ref) {
+        detach(child);
+        const i = ref ? el.children.indexOf(ref) : -1;
+        el.children.splice(i === -1 ? el.children.length : i, 0, child);
+        child.parentNode = el;
+      },
+      get firstChild() { return el.children[0] ?? null; },
     };
     el.classList = classListFor(el);
     return el;
@@ -332,6 +339,7 @@ describe('WLHeadings.inject', () => {
     assert.equal(placed, 2);
     assertChildListIsPureItems();
     assert.equal(headingIn(0)?.getAttribute('data-wl-heading'), 'Music');
+    assert.equal(container.children[0].children[0], headingIn(0), 'the heading is the item\'s first child, read before the video');
     assert.equal(headingIn(1), null, 'a video mid-group carries no heading');
     assert.equal(headingIn(2)?.getAttribute('data-wl-heading'), 'Tech & AI');
     assert.deepEqual(
@@ -339,6 +347,21 @@ describe('WLHeadings.inject', () => {
       [true, false, true],
       'only group-starting items get the class that opens the margin gap',
     );
+  });
+
+  it('moves a heading that drifted behind the item\'s own children back to the front', () => {
+    const { document, container, headingIn } = fakePlaylist(['a']);
+    const headings = loadGlobal('content/headings.js', 'WLHeadings', {
+      document, SELECTORS, MutationObserver: class { observe() {} disconnect() {} },
+    });
+    const boundaries = [{ videoId: 'a', name: 'Music', count: 1 }];
+    headings.inject(boundaries);
+    // YouTube re-renders the item's own children in front of ours.
+    container.children[0].insertBefore({ nodeType: 1, tagName: 'div', children: [], parentNode: null }, headingIn(0));
+    assert.notEqual(container.children[0].children[0], headingIn(0));
+    headings.inject(boundaries);
+    assert.equal(container.children[0].children[0], headingIn(0));
+    assert.equal(container.children[0].children.length, 2, 'moved, not duplicated');
   });
 
   it('is idempotent: running twice produces one heading per group', () => {
@@ -456,34 +479,6 @@ describe('WLHeadings.clear', () => {
       container.children.map(el => el.classList.contains('wl-group-anchor')),
       [false, false],
     );
-  });
-});
-
-describe('WLHeadings.present', () => {
-  // Drives whether the modal offers its "Hide group headings" control, so it
-  // has to track the real lifecycle rather than any stored intent.
-  const loadWith = (document) => loadGlobal('content/headings.js', 'WLHeadings', {
-    document, SELECTORS, MutationObserver: class { observe() {} disconnect() {} },
-  });
-
-  it('is false before anything is injected', () => {
-    const { document } = fakePlaylist(['a', 'b']);
-    assert.equal(loadWith(document).present(), false);
-  });
-
-  it('is true once headings are injected', () => {
-    const { document } = fakePlaylist(['a', 'b']);
-    const headings = loadWith(document);
-    headings.inject(headings.boundariesFrom([video({ id: 'a', cluster: 'Music' })]));
-    assert.equal(headings.present(), true);
-  });
-
-  it('is false again after clear()', () => {
-    const { document } = fakePlaylist(['a', 'b']);
-    const headings = loadWith(document);
-    headings.inject(headings.boundariesFrom([video({ id: 'a', cluster: 'Music' })]));
-    headings.clear();
-    assert.equal(headings.present(), false);
   });
 });
 

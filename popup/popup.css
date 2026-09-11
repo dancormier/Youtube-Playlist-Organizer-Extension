@@ -1,166 +1,279 @@
-/* popup/popup.css — Settings popup */
+/* popup/popup.css — settings popup, in the modal's vocabulary (styles/modal.css).
+   Same --wl-* token values; keyed on the OS colour scheme because there is no
+   YouTube page (and so no html[dark]) behind the popup. The popup is not on
+   YouTube's 10px root, so sizes are in px where the modal uses rem. */
+
+:root {
+  --wl-surface: #fff;
+  --wl-text: #0f0f0f;
+  --wl-text-2: #606060;
+  --wl-layer: rgba(0, 0, 0, 0.05);
+  --wl-layer-2: rgba(0, 0, 0, 0.1);
+  --wl-outline: rgba(0, 0, 0, 0.2);
+  --wl-accent: #065fd4;
+  --wl-in-progress: #b3261e;
+  --wl-switch-on: #2ba640;
+  --wl-inverse-bg: #0f0f0f;
+  --wl-inverse-text: #fff;
+  --wl-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M18.707 8.793a1 1 0 00-1.414 0L12 14.086 6.707 8.793a1 1 0 10-1.414 1.414L12 16.914l6.707-6.707a1 1 0 000-1.414Z' fill='%230f0f0f'/%3E%3C/svg%3E");
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --wl-surface: #212121;
+    --wl-text: #fff;
+    --wl-text-2: #aaa;
+    --wl-layer: rgba(255, 255, 255, 0.1);
+    --wl-layer-2: rgba(255, 255, 255, 0.2);
+    --wl-outline: rgba(255, 255, 255, 0.2);
+    --wl-accent: #3ea6ff;
+    --wl-in-progress: #ff8a80;
+    --wl-switch-on: #2ba640;
+    --wl-inverse-bg: #f1f1f1;
+    --wl-inverse-text: #0f0f0f;
+    --wl-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Cpath d='M18.707 8.793a1 1 0 00-1.414 0L12 14.086 6.707 8.793a1 1 0 10-1.414 1.414L12 16.914l6.707-6.707a1 1 0 000-1.414Z' fill='%23ffffff'/%3E%3C/svg%3E");
+    color-scheme: dark;
+  }
+}
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  width: 320px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  font-size: 13px;
-  color: #e1e1e1;
-  background: #1a1a1a;
-  padding: 14px;
-}
-
-.header {
-  margin-bottom: 12px;
-}
-.header h1 {
+  width: 360px;
+  font-family: 'Roboto', 'Arial', sans-serif;
   font-size: 14px;
-  font-weight: 600;
+  line-height: 20px;
+  color: var(--wl-text);
+  background: var(--wl-surface);
 }
 
-.perm-banner {
+.wl-header {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--wl-layer-2);
+}
+.wl-title { font-size: 16px; font-weight: 500; }
+
+.wl-banner {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 12px;
-  padding: 10px;
-  background: #2a2418;
-  border: 1px solid #5a4a1e;
-  border-radius: 4px;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--wl-layer-2);
+  background: var(--wl-layer);
 }
-.perm-banner[hidden] { display: none; }
-.perm-text {
-  font-size: 12px;
-  line-height: 1.4;
-  color: #e0cfa0;
+.wl-banner[hidden] { display: none; }
+.wl-banner-text { color: var(--wl-text); }
+
+.wl-section {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--wl-layer-2);
 }
-.perm-banner button {
-  align-self: flex-start;
-  padding: 6px 14px;
-  font-size: 12px;
-  background: #4a3d16;
-  color: #f0e2b8;
-  border: none;
-  border-radius: 4px;
+.wl-section-title {
+  padding: 8px 20px 4px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--wl-text);
+}
+
+/* Menu rows, as in the modal: label, value on the right, 40px tall, hover fill
+   to the panel edge. */
+.wl-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 20px;
   cursor: pointer;
 }
-.perm-banner button:hover { background: #5c4c1c; }
-.perm-banner button[hidden] { display: none; }
+.wl-row:hover { background: var(--wl-layer); }
+.wl-row-label { flex: 1; }
+.wl-row-help { padding: 0 20px 8px; }
 
-.settings-form {
+/* A select drawn as the row's value: no box, secondary colour, the modal's
+   chevron. The text sits against the chevron the way "Device theme ›" does. */
+.wl-row-select {
+  appearance: none;
+  -webkit-appearance: none;
+  max-width: 60%;
+  height: 40px;
+  padding: 0 24px 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  background-image: var(--wl-chevron);
+  background-repeat: no-repeat;
+  background-position: right 2px center;
+  color: var(--wl-text-2);
+  font: inherit;
+  text-align: right;
+  text-align-last: right;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.wl-row-select:hover { color: var(--wl-text); }
+/* The value colour reads as disabled-grey on the dropdown's own items. */
+.wl-row-select option { color: var(--wl-text); background: var(--wl-surface); }
+
+.wl-row-number {
+  width: 64px;
+  height: 32px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: var(--wl-layer);
+  color: var(--wl-text);
+  font: inherit;
+  text-align: center;
+}
+
+/* Stacked fields for free text: label above a 40px field. */
+.wl-field {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 6px;
+  padding: 8px 20px;
 }
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.field[hidden] { display: none; }
-.label-row {
+.wl-field[hidden] { display: none; }
+.wl-field-head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  gap: 12px;
 }
-.row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-.row > select,
-.row > input {
-  flex: 1;
-  min-width: 0;
-}
-.row > [hidden] { display: none; }
+.wl-field label { color: var(--wl-text); }
+.wl-inline { display: flex; gap: 8px; align-items: center; }
+.wl-inline > select,
+.wl-inline > input { flex: 1; min-width: 0; }
+.wl-inline > [hidden] { display: none; }
 
-.settings-form label {
-  font-size: 12px;
-  color: #aaa;
-}
-.check-field {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-}
-.settings-form .check-field input { width: auto; margin: 0; accent-color: #c00; }
-.settings-form input,
-.settings-form select,
-.settings-form textarea {
+.wl-field input,
+.wl-field select,
+.wl-field textarea {
   width: 100%;
-  padding: 7px 8px;
-  background: #2a2a2a;
-  border: 1px solid #444;
-  border-radius: 4px;
-  color: #e1e1e1;
-  font-size: 13px;
-  font-family: inherit;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--wl-layer);
+  color: var(--wl-text);
+  font: inherit;
 }
-.settings-form textarea {
-  resize: vertical;
-  line-height: 1.4;
-}
-/* Same replacement chevron as the preview's selects: the native arrow sits
-   flush against the border regardless of padding. */
-.settings-form select {
+.wl-field textarea { resize: vertical; }
+.wl-field select {
   appearance: none;
   -webkit-appearance: none;
-  padding-right: 28px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M1 3l4 4 4-4' fill='none' stroke='%23f1f1f1' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  padding-right: 36px;
+  background-image: var(--wl-chevron);
   background-repeat: no-repeat;
-  background-position: right 8px center;
-}
-.settings-form input:focus,
-.settings-form select:focus,
-.settings-form textarea:focus {
-  outline: none;
-  border-color: #777;
-}
-
-.settings-form button {
-  padding: 6px 12px;
-  font-size: 12px;
-  background: #333;
-  color: #ccc;
-  border: none;
-  border-radius: 4px;
+  background-position: right 10px center;
+  text-overflow: ellipsis;
   cursor: pointer;
+}
+.wl-field select option { background: var(--wl-surface); }
+::placeholder { color: var(--wl-text-2); opacity: 1; }
+
+/* YouTube pill buttons: 36px, fully rounded, inverted primary. */
+.wl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  height: 36px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 18px;
+  background: var(--wl-layer);
+  color: var(--wl-text);
+  font: inherit;
+  font-weight: 500;
   white-space: nowrap;
+  cursor: pointer;
 }
-.settings-form button:hover { background: #444; }
-.settings-form button:disabled { opacity: 0.6; cursor: default; }
-#save-btn {
-  background: #c00;
-  color: #fff;
-}
-#save-btn:hover { background: #d81b1b; }
+.wl-btn:hover { background: var(--wl-layer-2); }
+.wl-btn:disabled { cursor: default; color: var(--wl-text-2); }
+.wl-btn.wl-primary { background: var(--wl-inverse-bg); color: var(--wl-inverse-text); }
+.wl-btn.wl-primary:hover { opacity: 0.9; }
+.wl-btn[hidden] { display: none; }
 
-.link-btn,
-.settings-form .link-btn {
+.wl-link {
   padding: 0;
+  border: none;
   background: none;
-  color: #8ab4f8;
-  font-size: 11px;
-}
-.settings-form .link-btn:hover { background: none; text-decoration: underline; }
-.settings-form a {
-  color: #8ab4f8;
-  font-size: 11px;
+  color: var(--wl-accent);
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
   text-decoration: none;
+  cursor: pointer;
 }
-.settings-form a:hover { text-decoration: underline; }
+.wl-link:hover { text-decoration: underline; }
+.wl-link[hidden] { display: none; }
 
-.help {
-  font-size: 11px;
-  line-height: 1.4;
-  color: #888;
+/* Same switch as the modal's "Group in progress" row. */
+.wl-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border: none;
+  border-radius: 10px;
+  background: var(--wl-layer-2);
+  cursor: pointer;
+  transition: background 150ms ease-out;
 }
-.status-text {
-  color: #aaa;
-  font-size: 11px;
-  line-height: 1.4;
+.wl-switch::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: transform 150ms ease-out;
 }
-.status-text.error { color: #f28b82; }
+.wl-switch:checked { background: var(--wl-switch-on); }
+.wl-switch:checked::before { transform: translateX(16px); }
+
+.wl-help {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--wl-text-2);
+}
+
+.wl-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px 20px;
+}
+.wl-status {
+  flex: 1;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--wl-text-2);
+}
+.wl-status.error { color: var(--wl-in-progress); }
+
+/* Visible focus for keyboard users; the switch inside a label row is shown
+   on the row, as in the modal. */
+:focus-visible {
+  outline: 2px solid var(--wl-accent);
+  outline-offset: 2px;
+}
+.wl-row:focus-within { outline: 2px solid var(--wl-accent); outline-offset: -2px; }
+.wl-row :focus-visible { outline: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .wl-switch, .wl-switch::before { transition: none; }
+}

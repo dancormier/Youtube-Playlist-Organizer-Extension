@@ -4,20 +4,41 @@ A browser extension that sorts a YouTube playlist — most usefully **Watch Late
 
 ## What it does
 
-- Adds an **Organize** button to the playlist's filter-chip row (floating at the bottom right if that row is missing)
+- Adds an **Organize** button at the end of the playlist's filter-chip row (floating at the bottom right if that row is missing)
 - **Analyze & sort** — the model you configure groups videos into your categories. Needs an API key (or a local Ollama), takes a few seconds
 - **Sort by duration** — shortest first. Local, instant, no API key
 - **Sort by title** — A to Z. Local, instant, no API key
 - **Sort by channel** — channel name A to Z, then title. Local, instant, no API key
 - Preview the result before applying and, in AI mode, mark a started video as unwatched so it sorts with the rest of its group
-- Applying sends every move in one batched request, then draws group headings into the playlist
-- **Hide group headings** removes the headings and stops them returning
+- Applying switches the playlist to **Manual** sort if it is on another sort (a reorder only shows through the Manual view), sends every move in one batched request, then draws group headings into the playlist
+- A **Hide headings / Show headings** chip after Organize toggles the headings; they are dropped on their own once the playlist's videos change or you pick another sort in YouTube's own sort menu
+- **Clear headings** in the Organize dialog removes the headings for good
+- **Undo last sort** in the Organize dialog puts the playlist back in the order it had before the last apply (as long as no video was added or removed since)
 
 Videos less than 10% watched count as unwatched. YouTube marks a video partially watched after roughly two seconds, so a stricter threshold promoted far too many videos.
 
+## Screenshots
+
+<!-- TODO: capture the three images described in docs/screenshots/README.md, then
+     uncomment the lines below and delete this comment. -->
+<!--
+![The preview after Analyze & sort: group headings with counts and time left, sort options above the list](docs/screenshots/modal.png)
+![A playlist after applying: group headings drawn into the list, Organize and Hide headings chips in the filter row](docs/screenshots/headings.png)
+![The settings popup: provider, model list, categories and sort defaults](docs/screenshots/popup.png)
+-->
+
+Screenshots are coming; the capture plan is in [docs/screenshots/README.md](docs/screenshots/README.md).
+
+## Install from a release
+
+Store listings are planned. Until then, each [GitHub Release](https://github.com/dancormier/youtube-playlist-organizer/releases) carries two files:
+
+- `youtube-playlist-organizer-chrome-<version>.zip` — unzip it, open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and pick the folder.
+- `youtube-playlist-organizer-firefox-<version>-unsigned.xpi` — **not signed by Mozilla**, so release Firefox only loads it as a temporary add-on (`about:debugging#/runtime/this-firefox` → **Load Temporary Add-on…**), which is removed on restart. For a permanent install, sign it yourself (below) or wait for the store listing.
+
 ## Install from source
 
-Store builds are planned. Until then, build it yourself:
+Or build it yourself:
 
 ```sh
 npm install
@@ -42,13 +63,13 @@ This is wiped every time Firefox restarts.
 
 ### Firefox — permanent install (signed, unlisted)
 
-Release Firefox only installs add-ons Mozilla has signed. Signing on the **unlisted** channel gets a signed `.xpi` without publishing it:
+Release Firefox only installs add-ons Mozilla has signed. Signing on the **unlisted** channel gets a signed `.xpi` without publishing it. Get API credentials at <https://addons.mozilla.org/developers/addon/api/key/> and pass them as environment variables:
 
 ```sh
 AMO_JWT_ISSUER=... AMO_JWT_SECRET=... ./sign.sh
 ```
 
-Get API credentials at <https://addons.mozilla.org/developers/addon/api/key/>. The signed `.xpi` lands in `dist/`; install it via `about:addons` → gear icon → **Install Add-on From File…**.
+The script builds first, then uploads `dist/firefox/` for signing; the signed `.xpi` lands in `dist/`. Install it via `about:addons` → gear icon → **Install Add-on From File…**. If both variables are unset and the 1Password CLI is installed, the script instead reads the maintainer's own 1Password item (the names are at the top of `sign.sh`); set the variables to skip that.
 
 Two rules that matter:
 
@@ -102,9 +123,10 @@ Your key is stored in the browser's extension sync storage and is only ever sent
 ## Limitations
 
 - **It uses YouTube's unofficial InnerTube API**, the one the page itself calls. Google does not endorse this, and YouTube can change it and break the extension at any time.
-- **Reordering writes to the real playlist.** There is no undo other than sorting again.
+- **Reordering writes to the real playlist.** **Undo last sort** restores the order from before the most recent apply, and only that one; it is refused once a video has been added or removed.
 - **Group headings exist only in your browser.** The extension draws them; YouTube stores nothing but the new order, so other devices see the order without the headings.
 - **Playlists over ~2,000 videos are silently truncated.** Reading stops after 20 pages and the result looks complete.
+- **The Manual sort switch relies on YouTube's menu order.** Before applying, the extension opens the playlist's sort menu and picks its first entry, which YouTube lists as Manual in every language. If YouTube ever reorders that menu, pick Manual yourself before applying.
 - **"Treat as unwatched" only affects sorting.** It cannot clear YouTube's red progress bar (see [ARCHITECTURE.md](ARCHITECTURE.md) for why).
 - **Titles and channel names are sent to the AI provider you configure**, on your key, at your cost.
 - **Several Google accounts in one browser profile:** the extension reads the account index from the page (`SESSION_INDEX`) and addresses that account. Brand/channel accounts go through `DELEGATED_SESSION_ID`. If a playlist ever shows another account's videos, open an issue with the account setup.
@@ -129,6 +151,7 @@ No test framework and no test dependencies — plain `node:test` and `node:asser
 content/     globals, NOT ES modules, load-ordered by the manifest
   announce.js    (no global)  tells the background this tab is YouTube
   selectors.js   SELECTORS   the only YouTube selectors in the project
+  viewsort.js    WLViewSort  switches the playlist's own sort chip to Manual
   innertube.js   WLInnerTube config scrape, SAPISIDHASH, call(), paging
   playlist.js    WLPlaylist  read() -> Video[], applyOrder()
   enrich.js      WLEnrich    player calls, concurrency 6, best-effort

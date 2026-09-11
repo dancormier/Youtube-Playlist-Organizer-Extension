@@ -1,0 +1,53 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check that the tag matches package.json
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "Tag v$TAG does not match package.json version $VERSION" >&2
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - run: npm test
+      - run: ./build.sh
+      - name: Package both browsers
+        run: |
+          (cd dist/chrome && zip -qr "../youtube-playlist-organizer-chrome-$VERSION.zip" .)
+          (cd dist/firefox && zip -qr "../youtube-playlist-organizer-firefox-$VERSION-unsigned.xpi" .)
+          ls -l dist/*.zip dist/*.xpi
+      - name: Assemble the release notes
+        run: |
+          {
+            sed "s/{{VERSION}}/$VERSION/g" .github/release-notes.md
+            echo
+            echo "## Changes"
+            echo
+            awk -v v="$VERSION" '
+              $0 ~ "^## \\[" v "\\]" { on = 1; next }
+              on && /^## / { exit }
+              on { print }
+            ' CHANGELOG.md
+          } > release-notes.md
+          cat release-notes.md
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            "dist/youtube-playlist-organizer-chrome-$VERSION.zip" \
+            "dist/youtube-playlist-organizer-firefox-$VERSION-unsigned.xpi"
