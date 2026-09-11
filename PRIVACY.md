@@ -20,3 +20,7 @@ Nothing is sent to the extension's author or to any other third party.
 
 - `storage` — the settings and working state above.
 - `activeTab` and the `https://www.youtube.com/*` host permission — to run on playlist pages and talk to YouTube's API from there. Firefox asks you to grant the host permission explicitly.
+
+## Contact
+
+Questions about this policy or the extension's data handling: Dan Camus <dancamus860@gmail.com>, or open an issue on the repository.

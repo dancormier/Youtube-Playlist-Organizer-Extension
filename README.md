@@ -15,9 +15,28 @@ A browser extension that sorts a YouTube playlist — most usefully **Watch Late
 
 Videos less than 10% watched count as unwatched. YouTube marks a video partially watched after roughly two seconds, so a stricter threshold promoted far too many videos.
 
+## Screenshots
+
+<!-- TODO: capture the three images described in docs/screenshots/README.md, then
+     uncomment the lines below and delete this comment. -->
+<!--
+![The preview after Analyze & sort: group headings with counts and time left, sort options above the list](docs/screenshots/modal.png)
+![A playlist after applying: group headings drawn into the list, Organize and Hide headings chips in the filter row](docs/screenshots/headings.png)
+![The settings popup: provider, model list, categories and sort defaults](docs/screenshots/popup.png)
+-->
+
+Screenshots are coming; the capture plan is in [docs/screenshots/README.md](docs/screenshots/README.md).
+
+## Install from a release
+
+Store listings are planned. Until then, each [GitHub Release](https://github.com/dancormier/youtube-playlist-organizer/releases) carries two files:
+
+- `youtube-playlist-organizer-chrome-<version>.zip` — unzip it, open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and pick the folder.
+- `youtube-playlist-organizer-firefox-<version>-unsigned.xpi` — **not signed by Mozilla**, so release Firefox only loads it as a temporary add-on (`about:debugging#/runtime/this-firefox` → **Load Temporary Add-on…**), which is removed on restart. For a permanent install, sign it yourself (below) or wait for the store listing.
+
 ## Install from source
 
-Store builds are planned. Until then, build it yourself:
+Or build it yourself:
 
 ```sh
 npm install
@@ -42,13 +61,13 @@ This is wiped every time Firefox restarts.
 
 ### Firefox — permanent install (signed, unlisted)
 
-Release Firefox only installs add-ons Mozilla has signed. Signing on the **unlisted** channel gets a signed `.xpi` without publishing it:
+Release Firefox only installs add-ons Mozilla has signed. Signing on the **unlisted** channel gets a signed `.xpi` without publishing it. Get API credentials at <https://addons.mozilla.org/developers/addon/api/key/> and pass them as environment variables:
 
 ```sh
 AMO_JWT_ISSUER=... AMO_JWT_SECRET=... ./sign.sh
 ```
 
-Get API credentials at <https://addons.mozilla.org/developers/addon/api/key/>. The signed `.xpi` lands in `dist/`; install it via `about:addons` → gear icon → **Install Add-on From File…**.
+The script builds first, then uploads `dist/firefox/` for signing; the signed `.xpi` lands in `dist/`. Install it via `about:addons` → gear icon → **Install Add-on From File…**. If both variables are unset and the 1Password CLI is installed, the script instead reads the maintainer's own 1Password item (the names are at the top of `sign.sh`); set the variables to skip that.
 
 Two rules that matter:
 
