@@ -10,8 +10,8 @@ A browser extension that sorts a YouTube playlist — most usefully **Watch Late
 - **Sort by title** — A to Z. Local, instant, no API key
 - **Sort by channel** — channel name A to Z, then title. Local, instant, no API key
 - Preview the result before applying and, in AI mode, mark a started video as unwatched so it sorts with the rest of its group
-- Applying sends every move in one batched request, then draws group headings into the playlist
-- **Hide group headings** removes the headings and stops them returning
+- Applying switches the playlist to **Manual** sort if it is on another sort (a reorder only shows through the Manual view), sends every move in one batched request, then draws group headings into the playlist
+- A **Hide headings / Show headings** chip next to Organize toggles the headings; **Hide group headings** in the Organize dialog removes them for good
 
 Videos less than 10% watched count as unwatched. YouTube marks a video partially watched after roughly two seconds, so a stricter threshold promoted far too many videos.
 
@@ -105,6 +105,7 @@ Your key is stored in the browser's extension sync storage and is only ever sent
 - **Reordering writes to the real playlist.** There is no undo other than sorting again.
 - **Group headings exist only in your browser.** The extension draws them; YouTube stores nothing but the new order, so other devices see the order without the headings.
 - **Playlists over ~2,000 videos are silently truncated.** Reading stops after 20 pages and the result looks complete.
+- **The sort chip is matched by its English label.** Switching the playlist to Manual before applying looks for a menu entry called "Manual"; in another YouTube language, pick Manual yourself before applying.
 - **"Treat as unwatched" only affects sorting.** It cannot clear YouTube's red progress bar (see [ARCHITECTURE.md](ARCHITECTURE.md) for why).
 - **Titles and channel names are sent to the AI provider you configure**, on your key, at your cost.
 - **Several Google accounts in one browser profile:** the extension reads the account index from the page (`SESSION_INDEX`) and addresses that account. Brand/channel accounts go through `DELEGATED_SESSION_ID`. If a playlist ever shows another account's videos, open an issue with the account setup.
@@ -129,6 +130,7 @@ No test framework and no test dependencies — plain `node:test` and `node:asser
 content/     globals, NOT ES modules, load-ordered by the manifest
   announce.js    (no global)  tells the background this tab is YouTube
   selectors.js   SELECTORS   the only YouTube selectors in the project
+  viewsort.js    WLViewSort  switches the playlist's own sort chip to Manual
   innertube.js   WLInnerTube config scrape, SAPISIDHASH, call(), paging
   playlist.js    WLPlaylist  read() -> Video[], applyOrder()
   enrich.js      WLEnrich    player calls, concurrency 6, best-effort

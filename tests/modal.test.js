@@ -67,8 +67,9 @@ describe('WLModal.metaFor', () => {
     assert.equal(load().metaFor(video({ cluster: null, duration: 600, percentWatched: 50 })), '5:00 / 10:00');
   });
 
-  it('shows a zero position for a started video the user marked unwatched', () => {
-    assert.equal(load().metaFor(video({ cluster: 'Music', inProgress: false, duration: 600, percentWatched: 50 })), '0:00 / 10:00');
+  it('shows only the total for a started video the user marked unwatched', () => {
+    // The pressed eye already marks the override; "0:00 / 10:00" read as a bug.
+    assert.equal(load().metaFor(video({ cluster: 'Music', inProgress: false, duration: 600, percentWatched: 50 })), '10:00');
   });
 
   it('shows the real position in a simple (non-AI) sort, where no override exists', () => {
@@ -809,5 +810,124 @@ describe('WLModal.showBusy cancellability', () => {
     modal.showError('something broke');
 
     assert.equal(modal._cancellable, true);
+  });
+});
+
+describe('WLModal.syncHeadingsToggle', () => {
+  /** A trigger already mounted in a parent, with enough DOM for insertBefore. */
+  function mounted(inline) {
+    const document = fakeDocument();
+    const modal = loadGlobal('content/modal.js', 'WLModal', { document });
+    const parent = { children: [], insertBefore(node, ref) {
+      const i = ref ? this.children.indexOf(ref) : -1;
+      const j = this.children.indexOf(node);
+      if (j !== -1) this.children.splice(j, 1);
+      this.children.splice(i === -1 ? this.children.length : i, 0, node);
+      node.parentNode = this;
+    } };
+    const trigger = document.createElement('button');
+    trigger.id = 'wl-trigger';
+    trigger.className = inline ? 'wl-trigger wl-trigger-inline' : 'wl-trigger';
+    document.body.appendChild(trigger);
+    parent.insertBefore(trigger, null);
+    const after = () => parent.children[parent.children.indexOf(trigger) + 1] ?? null;
+    Object.defineProperty(trigger, 'nextSibling', { get: after });
+    Object.defineProperty(trigger, 'nextElementSibling', { get: after });
+    const original = document.querySelector.bind(document);
+    document.querySelector = (sel) => (sel === '#wl-headings-toggle'
+      ? document._elements.find(el => el.id === 'wl-headings-toggle') ?? null
+      : original(sel));
+    document.body.appendChild = (el) => { document._elements.push(el); };
+    const toggle = () => document._elements.find(el => el.id === 'wl-headings-toggle') ?? null;
+    return { modal, document, parent, trigger, toggle };
+  }
+
+  // fakeDocument's createElement does not track elements until appended;
+  // register anything the method creates so querySelector can find it later.
+  function track(document) {
+    const create = document.createElement.bind(document);
+    document.createElement = (tag) => { const el = create(tag); el.setAttribute = (k, v) => { el[`_${k}`] = v; }; el.getAttribute = (k) => el[`_${k}`] ?? null; document._elements.push(el); return el; };
+  }
+
+  it('does nothing without a state, and removes a stale button', () => {
+    const { modal, document, toggle } = mounted(true);
+    track(document);
+    modal.syncHeadingsToggle(null);
+    assert.equal(toggle(), null);
+    modal.syncHeadingsToggle('shown');
+    assert.ok(toggle());
+    modal.syncHeadingsToggle(null);
+    assert.equal(toggle(), null, 'removed once the playlist has no headings');
+  });
+
+  it('inserts the chip right after the trigger, in the trigger\'s shape', () => {
+    const { modal, document, parent, trigger, toggle } = mounted(true);
+    track(document);
+    modal.syncHeadingsToggle('shown', { onToggle: () => {} });
+    const button = toggle();
+    assert.equal(parent.children[0], trigger);
+    assert.equal(parent.children[1], button);
+    assert.match(button.className, /wl-trigger-inline/);
+    assert.match(button.innerHTML, /Hide headings/);
+    assert.equal(button.getAttribute('aria-pressed'), 'true');
+  });
+
+  it('relabels in place for the hidden state and keeps one button', () => {
+    const { modal, document, parent, toggle } = mounted(true);
+    track(document);
+    modal.syncHeadingsToggle('shown');
+    modal.syncHeadingsToggle('hidden');
+    modal.syncHeadingsToggle('hidden');
+    const buttons = document._elements.filter(el => el.id === 'wl-headings-toggle');
+    assert.equal(buttons.length, 1);
+    assert.equal(parent.children.length, 2);
+    assert.match(toggle().innerHTML, /Show headings/);
+    assert.equal(toggle().getAttribute('aria-pressed'), 'false');
+  });
+
+  it('moves back next to the trigger when something else lands between them', () => {
+    const { modal, document, parent, trigger, toggle } = mounted(true);
+    track(document);
+    modal.syncHeadingsToggle('shown');
+    const stranger = { id: 'yt-chip' };
+    parent.insertBefore(stranger, toggle());
+    assert.equal(parent.children[1], stranger);
+    modal.syncHeadingsToggle('shown');
+    assert.deepEqual(parent.children.map(el => el.id), ['wl-trigger', 'wl-headings-toggle', 'yt-chip']);
+    assert.equal(parent.children[0], trigger);
+  });
+
+  it('routes a click to onToggle', () => {
+    const { modal, document, toggle } = mounted(false);
+    track(document);
+    let toggled = 0;
+    modal.syncHeadingsToggle('shown', { onToggle: () => { toggled++; } });
+    toggle()._listeners.click();
+    assert.equal(toggled, 1);
+    assert.doesNotMatch(toggle().className, /wl-trigger-inline/, 'floating trigger, floating chip');
+  });
+
+  it('is a no-op when the trigger is not mounted', () => {
+    const document = fakeDocument();
+    const modal = loadGlobal('content/modal.js', 'WLModal', { document });
+    modal.syncHeadingsToggle('shown');
+    assert.equal(document._elements.length, 0);
+  });
+});
+
+describe('WLModal.removeTrigger with the headings chip', () => {
+  it('removes both chips', () => {
+    const document = fakeDocument();
+    const modal = loadGlobal('content/modal.js', 'WLModal', { document });
+    const original = document.querySelector.bind(document);
+    document.querySelector = (sel) => (sel === '#wl-headings-toggle'
+      ? document._elements.find(el => el.id === 'wl-headings-toggle') ?? null
+      : original(sel));
+    modal.mountTrigger({ onOpen: () => {} });
+    const chip = document.createElement('button');
+    chip.id = 'wl-headings-toggle';
+    document.body.appendChild(chip);
+    modal.removeTrigger();
+    assert.equal(document._elements.length, 0);
   });
 });

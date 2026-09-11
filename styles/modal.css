@@ -62,6 +62,12 @@ html[dark] .wl-trigger.wl-trigger-inline::before { background: rgba(255, 255, 25
 html[dark] .wl-trigger.wl-trigger-inline:hover { background: rgba(255, 255, 255, 0.2); }
 .wl-trigger.wl-trigger-inline svg { width: 18px; height: 18px; }
 
+/* The Show/Hide headings chip sits right after Organize: same shape, no rule
+   before it. Floating, it stacks above the floating Organize button. */
+.wl-headings-toggle { bottom: 76px; }
+.wl-headings-toggle.wl-trigger-inline { margin-left: 8px; }
+.wl-headings-toggle.wl-trigger-inline::before { content: none; }
+
 /* The modal speaks YouTube's account-menu vocabulary. Every colour is a token
    set here for the light theme and overridden under html[dark] — YouTube's
    theme is that attribute, not the OS setting. */

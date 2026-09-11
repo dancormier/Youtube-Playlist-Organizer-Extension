@@ -40,6 +40,7 @@ function loadPanel(sandbox = {}) {
     WLModal: {
       mountTrigger() {},
       removeTrigger() {},
+      syncHeadingsToggle() {},
       verifyTrigger() { return { present: false }; },
       close() {},
       open() {},
@@ -48,6 +49,7 @@ function loadPanel(sandbox = {}) {
       showError() {},
       setStatus() {},
     },
+    WLViewSort: { ensureManual: async () => 'manual' },
     WLInnerTube: { resetConfig() {} },
     WLPlaylist: {},
     WLEnrich: {},
@@ -82,10 +84,11 @@ function loadPanel(sandbox = {}) {
  * `mode` seeds currentMode (default 'ai', the only mode whose session accepts
  * toggleUnwatched()/changeSortOptions()); runSort() overwrites it.
  */
-function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, toggleOverride, reload, runTimers, sortOrder, playlistId, setGroupMap, setSortOptions, sortOptions, mode = 'ai' }) {
-  const modalCalls = { showBusy: [], showPreview: [], showPreviewOptions: [], showError: [], setStatus: [] };
+function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, toggleOverride, reload, runTimers, sortOrder, playlistId, setGroupMap, setSortOptions, sortOptions, ensureManual, mode = 'ai' }) {
+  const modalCalls = { showBusy: [], showPreview: [], showPreviewOptions: [], showError: [], setStatus: [], headingsToggle: [] };
   const sandbox = {
     chrome: { runtime: { sendMessage } },
+    WLViewSort: { ensureManual: ensureManual || (async () => 'manual') },
     WLPlaylist: { read: async () => videos, applyOrder },
     WLEnrich: { enrich },
     WLStorage: {
@@ -104,6 +107,7 @@ function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, toggleOve
     WLModal: {
       mountTrigger() {},
       removeTrigger() {},
+      syncHeadingsToggle(state) { modalCalls.headingsToggle.push(state); },
       verifyTrigger() { return { present: false }; },
       close() {},
       open() {},
@@ -1018,5 +1022,215 @@ describe('sort options plumbing', () => {
 
     assert.deepEqual(sent[0].overrides, ['v1']);
     assert.deepEqual({ ...sent[0].sortOptions }, OPTS);
+  });
+});
+
+describe('headings toggle', () => {
+  const storedMap = () => ({
+    playlistId: 'WL',
+    boundaries: [{ videoId: 'a', name: 'Music', count: 1 }],
+    videoIdsHash: 'match',
+  });
+
+  function loadWithMap(map, extra = {}) {
+    const calls = { watch: 0, clear: 0, saved: [], toggle: [] };
+    const WLPanel = loadPanel({
+      WLStorage: {
+        getGroupMap: async () => map,
+        setGroupMap: async (next) => { calls.saved.push({ ...next }); },
+      },
+      WLPlaylist: { read: async () => [{ id: 'a' }] },
+      WLHeadings: {
+        boundariesFrom: () => [],
+        hashIds: () => 'match',
+        watch: () => { calls.watch++; },
+        stop() {},
+        clear: () => { calls.clear++; },
+      },
+      WLModal: {
+        mountTrigger() {},
+        removeTrigger() {},
+        syncHeadingsToggle(state) { calls.toggle.push(state); },
+        verifyTrigger() { return { present: false }; },
+        close() {},
+        open() {},
+        showBusy() {},
+        showPreview() {},
+        showError() {},
+        setStatus() {},
+      },
+      ...extra,
+    });
+    return { WLPanel, calls };
+  }
+
+  it('restoreHeadings shows the chip as "shown" after injecting', async () => {
+    const { WLPanel, calls } = loadWithMap(storedMap());
+    await WLPanel.restoreHeadings();
+    assert.equal(calls.watch, 1);
+    assert.deepEqual(calls.toggle, ['shown']);
+    assert.equal(WLPanel._headingsState, 'shown');
+  });
+
+  it('restoreHeadings honours a hidden map: no injection, chip reads "hidden"', async () => {
+    const { WLPanel, calls } = loadWithMap({ ...storedMap(), hidden: true });
+    await WLPanel.restoreHeadings();
+    assert.equal(calls.watch, 0, 'hidden headings stay out of the page');
+    assert.deepEqual(calls.toggle, ['hidden']);
+  });
+
+  it('restoreHeadings offers no chip when the stored map is for another playlist', async () => {
+    const { WLPanel, calls } = loadWithMap({ ...storedMap(), playlistId: 'PLother' });
+    await WLPanel.restoreHeadings();
+    assert.deepEqual(calls.toggle, []);
+    assert.equal(WLPanel._headingsState, null);
+  });
+
+  it('toggleHeadings hides shown headings and persists hidden: true', async () => {
+    const { WLPanel, calls } = loadWithMap(storedMap());
+    await WLPanel.restoreHeadings();
+    const clearsBefore = calls.clear; // load-time syncTrigger() clears once
+    await WLPanel.toggleHeadings();
+    assert.equal(calls.clear, clearsBefore + 1);
+    assert.equal(WLPanel._headingsState, 'hidden');
+    assert.equal(calls.saved.at(-1).hidden, true);
+    assert.deepEqual(calls.saved.at(-1).boundaries.map(b => b.name), ['Music'], 'the map survives');
+  });
+
+  it('toggleHeadings re-injects hidden headings and persists hidden: false', async () => {
+    const { WLPanel, calls } = loadWithMap({ ...storedMap(), hidden: true });
+    await WLPanel.restoreHeadings();
+    await WLPanel.toggleHeadings();
+    assert.equal(calls.watch, 1);
+    assert.equal(WLPanel._headingsState, 'shown');
+    assert.equal(calls.saved.at(-1).hidden, false);
+  });
+
+  it('toggleHeadings drops the chip when the stored map has gone', async () => {
+    let map = storedMap();
+    const { WLPanel, calls } = loadWithMap(map, {
+      WLStorage: { getGroupMap: async () => map, setGroupMap: async () => {} },
+    });
+    await WLPanel.restoreHeadings();
+    map = {};
+    await WLPanel.toggleHeadings();
+    assert.equal(WLPanel._headingsState, null);
+    assert.equal(calls.toggle.at(-1), null);
+  });
+
+  it('toggleHeadings survives a storage failure without throwing', async () => {
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const { WLPanel } = loadWithMap(storedMap(), {
+        WLStorage: {
+          getGroupMap: async () => storedMap(),
+          setGroupMap: async () => { throw new Error('storage broken'); },
+        },
+      });
+      await WLPanel.restoreHeadings();
+      await assert.doesNotReject(() => WLPanel.toggleHeadings());
+      assert.equal(WLPanel._headingsState, 'hidden', 'the page state changed even though the save failed');
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('hideHeadings (the modal button) removes the chip', async () => {
+    const { WLPanel, calls } = loadWithMap(storedMap());
+    await WLPanel.restoreHeadings();
+    await WLPanel.hideHeadings();
+    assert.equal(calls.toggle.at(-1), null);
+  });
+});
+
+describe('applySort — Manual view sort', () => {
+  const order = [{ id: 'a', setVideoId: 'A' }, { id: 'b', setVideoId: 'B' }];
+
+  it('switches the playlist to Manual before sending the reorder', async () => {
+    const events = [];
+    const { WLPanel } = loadPanelWithStubs({
+      sendMessage: async () => ({ success: true }),
+      ensureManual: async () => { events.push('ensureManual'); return 'switched'; },
+      applyOrder: async () => { events.push('applyOrder'); return { applied: true, waitedMs: 10 }; },
+      reload: () => {},
+      runTimers: true,
+      sortOrder: order,
+      playlistId: 'WL',
+    });
+    await WLPanel.applySort();
+    assert.deepEqual(events, ['ensureManual', 'applyOrder']);
+  });
+
+  it('still applies when the switch fails, and names Manual sort if the order never appears', async () => {
+    let applied = false;
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async () => ({ success: true }),
+      ensureManual: async () => 'failed',
+      applyOrder: async () => { applied = true; return { applied: false, waitedMs: 10000 }; },
+      sortOrder: order,
+      playlistId: 'WL',
+    });
+    await WLPanel.applySort();
+    assert.equal(applied, true, 'a failed switch must not block the apply');
+    assert.match(modalCalls.showError[0], /Manual/);
+  });
+
+  it('keeps the plain message when the playlist was already Manual', async () => {
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async () => ({ success: true }),
+      ensureManual: async () => 'manual',
+      applyOrder: async () => ({ applied: false, waitedMs: 10000 }),
+      sortOrder: order,
+      playlistId: 'WL',
+    });
+    await WLPanel.applySort();
+    assert.doesNotMatch(modalCalls.showError[0], /Manual/);
+  });
+
+  it('names Manual sort when the page had no sort chip to switch', async () => {
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async () => ({ success: true }),
+      ensureManual: async () => 'no-chip',
+      applyOrder: async () => ({ applied: false, waitedMs: 10000 }),
+      sortOrder: order,
+      playlistId: 'WL',
+    });
+    await WLPanel.applySort();
+    assert.match(modalCalls.showError[0], /Manual/);
+  });
+
+  it('treats a thrown check like a failed one', async () => {
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      let applied = false;
+      const { WLPanel } = loadPanelWithStubs({
+        sendMessage: async () => ({ success: true }),
+        ensureManual: async () => { throw new Error('no DOM'); },
+        applyOrder: async () => { applied = true; return { applied: true, waitedMs: 1 }; },
+        reload: () => {},
+        runTimers: true,
+        sortOrder: order,
+        playlistId: 'WL',
+      });
+      await WLPanel.applySort();
+      assert.equal(applied, true);
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('abandons the apply when the session changes during the check', async () => {
+    let applied = false;
+    const { WLPanel } = loadPanelWithStubs({
+      sendMessage: async () => ({ success: true }),
+      ensureManual: async () => { WLPanel._runId++; return 'switched'; },
+      applyOrder: async () => { applied = true; return { applied: true, waitedMs: 1 }; },
+      sortOrder: order,
+      playlistId: 'WL',
+    });
+    await WLPanel.applySort();
+    assert.equal(applied, false, 'a superseded session must not write to the playlist');
   });
 });

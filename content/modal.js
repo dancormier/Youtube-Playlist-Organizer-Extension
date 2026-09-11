@@ -8,6 +8,8 @@ const WLModal = {
   // Eye = watched position is honoured; crossed eye = marked as unwatched.
   EYE_ICON: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>',
   EYE_OFF_ICON: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg>',
+  HEADINGS_ICON: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 4v3h5.5v12h3V7H19V4z"/></svg>',
+  HEADINGS_TOGGLE_ID: 'wl-headings-toggle',
   CHECK_ICON: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>',
 
   // Mirror of lib/sort.js SORT_CHOICES — content scripts cannot import lib/.
@@ -100,15 +102,16 @@ const WLModal = {
   },
 
   /**
-   * A started video reads "2:14 / 5:24"; one the user marked unwatched reads
-   * "0:00 / 5:24" so the override is visible in the time itself.
+   * A started video reads "2:14 / 5:24". One the user marked unwatched reads
+   * like any unwatched video, "5:24": the pressed eye already shows the
+   * override, and a "0:00 /" prefix looked like a bug.
    */
   metaFor(video) {
     if (video.unavailable) return 'unavailable';
-    if (this.hasWatchTime(video)) {
-      // Outside AI mode there is no override, so the real position always shows.
-      const started = this.isInProgress(video) || !('cluster' in video);
-      const pct = started ? Number(video.percentWatched) || 0 : 0;
+    // Outside AI mode there is no override, so the real position always shows.
+    const started = this.isInProgress(video) || !('cluster' in video);
+    if (started && this.hasWatchTime(video)) {
+      const pct = Number(video.percentWatched) || 0;
       return `${this.formatDuration(video.duration * pct / 100)} / ${this.formatDuration(video.duration)}`;
     }
     return this.formatDuration(video.duration);
@@ -178,6 +181,42 @@ const WLModal = {
 
   removeTrigger() {
     document.querySelector('#wl-trigger')?.remove();
+    document.querySelector(`#${this.HEADINGS_TOGGLE_ID}`)?.remove();
+  },
+
+  /**
+   * A second chip after Organize that hides or shows the injected headings.
+   * `state` is 'shown', 'hidden', or null when this playlist has no stored
+   * headings, in which case there is no button. Idempotent like mountTrigger:
+   * syncTrigger calls it on every mutation batch, so a no-op must stay cheap.
+   */
+  syncHeadingsToggle(state, { onToggle } = {}) {
+    let button = document.querySelector(`#${this.HEADINGS_TOGGLE_ID}`);
+    if (!state) { button?.remove(); return; }
+    const trigger = document.querySelector('#wl-trigger');
+    if (!trigger) return;
+
+    const shown = state === 'shown';
+    const label = shown ? 'Hide headings' : 'Show headings';
+    if (button && trigger.nextElementSibling === button
+        && button.getAttribute('aria-pressed') === String(shown)
+        && button.className.includes('wl-trigger-inline') === trigger.classList.contains('wl-trigger-inline')) {
+      return;
+    }
+    if (!button) {
+      button = document.createElement('button');
+      button.id = this.HEADINGS_TOGGLE_ID;
+      button.type = 'button';
+      button.addEventListener('click', () => onToggle?.());
+    }
+    button.className = trigger.classList.contains('wl-trigger-inline')
+      ? 'wl-trigger wl-trigger-inline wl-headings-toggle'
+      : 'wl-trigger wl-headings-toggle';
+    button.setAttribute('aria-pressed', String(shown));
+    button.setAttribute('aria-label', `${label} in this playlist`);
+    button.innerHTML = `${this.HEADINGS_ICON}${label}`;
+    if (trigger.parentNode) trigger.parentNode.insertBefore(button, trigger.nextSibling);
+    else document.body.appendChild(button);
   },
 
   /** Diagnostic: is the trigger present, and did our stylesheet actually apply? */
@@ -405,7 +444,7 @@ const WLModal = {
     if (sortOrder.some(v => 'cluster' in v && this.hasWatchTime(v))) {
       const hint = document.createElement('p');
       hint.className = 'wl-hint';
-      hint.textContent = 'Started videos keep their place by time left. Hover one and click the eye to sort it as unwatched instead.';
+      hint.textContent = 'Started videos sort by time left within their group. Hover one and click the eye to treat it as unwatched instead.';
       body.appendChild(hint);
     }
 

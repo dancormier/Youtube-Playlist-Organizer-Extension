@@ -1,5 +1,5 @@
 // content/panel.js
-// Depends on: content/selectors.js, content/innertube.js, content/playlist.js, content/enrich.js, content/modal.js, content/storage.js, content/headings.js
+// Depends on: content/selectors.js, content/viewsort.js, content/innertube.js, content/playlist.js, content/enrich.js, content/modal.js, content/storage.js, content/headings.js
 
 const WLPanel = {
   _runId: 0,
@@ -10,6 +10,9 @@ const WLPanel = {
   // The mode of the run that produced currentSortOrder; only 'ai' has a cached
   // analysis for RESORT to work from.
   currentMode: null,
+  // 'shown' or 'hidden' while this playlist has stored headings, else null.
+  // Drives the Show/Hide headings chip beside Organize.
+  _headingsState: null,
 
   openModal() {
     WLModal.open({
@@ -31,10 +34,52 @@ const WLPanel = {
     WLHeadings.stop();
     WLHeadings.clear();
     WLModal.close();
+    this._setHeadingsState(null);
     try {
       await WLStorage.setGroupMap({});
     } catch (err) {
       console.warn('WLPanel: failed to clear the stored group map; headings will return on reload', err);
+    }
+  },
+
+  _setHeadingsState(state) {
+    this._headingsState = state;
+    WLModal.syncHeadingsToggle(state, { onToggle: () => this.toggleHeadings() });
+  },
+
+  /**
+   * The chip beside Organize: hide the headings but keep the stored map, or
+   * put them back. The `hidden` flag on the map makes the choice survive a
+   * reload, where restoreHeadings() reads it.
+   */
+  async toggleHeadings() {
+    const runId = this._runId;
+    const playlistId = new URL(location.href).searchParams.get('list');
+    let stored;
+    try {
+      stored = await WLStorage.getGroupMap();
+    } catch (err) {
+      console.warn('WLPanel: failed to read stored group map', err);
+      return;
+    }
+    if (runId !== this._runId) return;
+    if (!stored.boundaries || stored.playlistId !== playlistId) {
+      this._setHeadingsState(null);
+      return;
+    }
+
+    const hidden = this._headingsState === 'shown';
+    if (hidden) {
+      WLHeadings.stop();
+      WLHeadings.clear();
+    } else {
+      WLHeadings.watch(stored.boundaries);
+    }
+    this._setHeadingsState(hidden ? 'hidden' : 'shown');
+    try {
+      await WLStorage.setGroupMap({ ...stored, hidden });
+    } catch (err) {
+      console.warn('WLPanel: failed to save the headings visibility; it will reset on reload', err);
     }
   },
 
@@ -176,6 +221,18 @@ const WLPanel = {
     const playlistId = this.currentPlaylistId;
     const orderedSetVideoIds = this.currentSortOrder.map(v => v.setVideoId);
 
+    // The reorder only shows through the Manual view (content/viewsort.js).
+    // Still cancellable: nothing has been written yet.
+    WLModal.showBusy('Checking the playlist sort...');
+    let viewSort;
+    try {
+      viewSort = await WLViewSort.ensureManual();
+    } catch (err) {
+      console.warn('WLPanel: could not check the playlist sort', err);
+      viewSort = 'failed';
+    }
+    if (runId !== this._runId) return;
+
     // Uninterruptible from here: applyOrder() sends the reorder immediately, so
     // "cancelling" would only hide the modal and skip the reload while the
     // playlist changed underneath.
@@ -216,6 +273,7 @@ const WLPanel = {
           // reordering the same set of videos never trips it.
           WLHeadings.stop();
           WLHeadings.clear();
+          this._setHeadingsState(null);
           await WLStorage.setGroupMap({});
         }
       } catch (err) {
@@ -235,7 +293,12 @@ const WLPanel = {
       // without this the timer would reload the page they just opened.
       setTimeout(() => { if (runId === this._runId) location.reload(); }, 1200);
     } else {
-      WLModal.showError('Sort was sent but the new order did not appear. Reload and check the playlist.');
+      // Anything but a confirmed Manual view is the likeliest cause, including
+      // a chip the selector no longer finds.
+      const manualUnconfirmed = viewSort !== 'manual' && viewSort !== 'switched';
+      WLModal.showError(manualUnconfirmed
+        ? 'Sort was sent but the new order did not appear. This playlist is not on Manual sort: pick Manual in the sort menu above the list, then try again.'
+        : 'Sort was sent but the new order did not appear. Reload and check the playlist.');
     }
   },
 
@@ -297,7 +360,12 @@ const WLPanel = {
     // document.body observer after navigating to a non-playlist page — one
     // that would then survive the rest of the session.
     if (runId !== this._runId) return;
+    if (stored.hidden) {
+      this._setHeadingsState('hidden');
+      return;
+    }
     WLHeadings.watch(stored.boundaries);
+    this._setHeadingsState('shown');
   },
 };
 
@@ -371,6 +439,7 @@ function syncTrigger(source) {
     });
   }
 
+  WLModal.syncHeadingsToggle(WLPanel._headingsState, { onToggle: () => WLPanel.toggleHeadings() });
   WLPanel.restoreHeadings();
 }
 
@@ -385,6 +454,7 @@ function resetForNavigation() {
   WLHeadings.stop();
   WLHeadings.clear();
   WLPanel._headingsRestoredFor = null;
+  WLPanel._headingsState = null;
 }
 
 let lastUrl = location.href;

@@ -16,4 +16,8 @@ const SELECTORS = {
     'ytd-feed-filter-chip-bar-renderer #chips-wrapper',
     'yt-chip-cloud-renderer #chips',
   ],
+  // The playlist's own sort chip and the menu it opens. A reorder only shows
+  // through the Manual view, so WLViewSort switches to it before applying.
+  SORT_CHIP: 'chip-bar-view-model button[role="combobox"]',
+  SORT_MENU_ITEMS: 'tp-yt-iron-dropdown [role="menuitem"]',
 };

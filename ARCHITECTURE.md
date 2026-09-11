@@ -33,6 +33,7 @@ History is enabled on the account, so a sparse feed isn't the explanation. **Don
 content/     (globals, NOT ES modules, load-ordered by manifest)
   announce.js    —           — one YT_PAGE message so the background can colour this tab's icon
   selectors.js   SELECTORS   — the ONLY YouTube selectors in the project
+  viewsort.js    WLViewSort  — switches the playlist's sort chip to Manual before an apply
   innertube.js   WLInnerTube — config scrape, SAPISIDHASH, call(), paging
   playlist.js    WLPlaylist  — read() → Video[], applyOrder(playlistId, setVideoIds)
   enrich.js      WLEnrich    — player calls, concurrency 6, best-effort
@@ -57,7 +58,7 @@ popup/
 1. `WLPanel.runSort('ai')` reads the playlist through InnerTube, enriches it via `player` calls, and sends `ANALYZE` to the background.
 2. The background loads settings, refuses if the provider needs a key and none is set, builds one prompt from titles/channels/categories plus the user's category list and instructions, and calls the provider: Anthropic's Messages API for `kind: 'anthropic'`, `POST {baseUrl}/chat/completions` for `kind: 'openai'` (OpenAI, Gemini's compatibility endpoint, OpenRouter, Ollama, custom).
 3. `buildSortOrder` orders the result — by default in-progress first, then the user's categories in their order, then model-invented names, then Other and Unavailable; `settings.sort` (or the message's `sortOptions`) changes the in-group order, where in-progress videos go, and the group order — and caches the clusters so `RESORT` (toggling "treat as unwatched", or changing a sort option in the preview) never calls the model again.
-4. Apply sends every move in one `browse/edit_playlist` call, polls until the read converges, stores the group map, and reloads; `WLHeadings` re-injects headings from the stored map on every page load until **Hide group headings** clears it.
+4. Apply first switches the playlist's sort chip to **Manual** through the DOM (`WLViewSort`) — with any other view sort selected the write succeeds but every read keeps the view's order, so the poll below never converges — then sends every move in one `browse/edit_playlist` call, polls until the read converges, stores the group map, and reloads; `WLHeadings` re-injects headings from the stored map on every page load until **Hide group headings** clears it. The **Hide/Show headings** chip beside Organize sets a `hidden` flag on the stored map instead, so the headings can come back.
 
 ### Hard constraints
 
@@ -66,7 +67,7 @@ Violating these breaks the extension at runtime, not at test time:
 1. **`content/` files are NOT ES modules.** One global each (`const WLThing = {...}`), load-ordered by the manifest. Adding `import`/`export` breaks them in the browser while tests still pass.
 2. **`lib/` files ARE ES modules.** Firefox's background is built by **concatenating** them and `sed`-ing out module syntax. `build.sh` strips `export function`, `export async function`, `export const`, and `import`. **Any other export form silently produces a broken Firefox background script.** This already happened once — `export const` wasn't stripped when `lib/taxonomy.js` was added. A new `lib/` file must also be added to the `LIB` list in `build.sh`, in dependency order; `node --check` on the bundle catches syntax but not a missing file.
 3. **No DOM fallback.** InnerTube failures surface as errors. Deliberate: one path to maintain.
-4. **Only our own UI avoids YouTube selectors.** The trigger and modal are elements we create. Heading injection genuinely must attach to YouTube's list — that dependency is confined to `content/selectors.js`.
+4. **Only our own UI avoids YouTube selectors.** The trigger and modal are elements we create. Heading injection must attach to YouTube's list, and the Manual-sort switch must click YouTube's sort chip — both dependencies are confined to `content/selectors.js`. No InnerTube endpoint for the view-sort preference has been identified; if one is, `WLViewSort` is the only thing to replace.
 5. **Nothing may become a child of `DIV#contents` except playlist items.** YouTube's `handleDragMove_` indexes a rect cache by child position, so one foreign sibling breaks drag-to-reorder for the whole list. Headings therefore mount *inside* their anchor item (see "Headings and drag-to-reorder" below).
 
 ## Decisions already made
