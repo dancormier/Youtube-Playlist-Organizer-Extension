@@ -44,7 +44,7 @@ lib/         (ES modules; imported by the background and the popup)
   taxonomy.js    — default category list and group names
   providers.js   — PROVIDERS table, MODEL_GUIDANCE, pickRecommended()
   settings.js    — DEFAULT_SETTINGS, normalizeSettings(), load/save over storage.sync
-  sort.js        — buildSortOrder(videos, clusters, overrides, taxonomy)
+  sort.js        — buildSortOrder(videos, clusters, overrides, taxonomy, options), SORT_CHOICES, normalizeSortOptions()
   classify.js    — buildPrompt(), parseClusters(), categorizeVideos(), listModels()
 background/
   service-worker.js — message handlers: ANALYZE, RESORT, SORT_BY_DURATION, GET_SORT_STATE, LIST_MODELS, YT_PAGE
@@ -56,7 +56,7 @@ popup/
 
 1. `WLPanel.runSort('ai')` reads the playlist through InnerTube, enriches it via `player` calls, and sends `ANALYZE` to the background.
 2. The background loads settings, refuses if the provider needs a key and none is set, builds one prompt from titles/channels/categories plus the user's category list and instructions, and calls the provider: Anthropic's Messages API for `kind: 'anthropic'`, `POST {baseUrl}/chat/completions` for `kind: 'openai'` (OpenAI, Gemini's compatibility endpoint, OpenRouter, Ollama, custom).
-3. `buildSortOrder` orders the result — in-progress first, then the user's categories in their order, then model-invented names, then Other and Unavailable — and caches the clusters so `RESORT` (toggling "treat as unwatched") never calls the model again.
+3. `buildSortOrder` orders the result — by default in-progress first, then the user's categories in their order, then model-invented names, then Other and Unavailable; `settings.sort` (or the message's `sortOptions`) changes the in-group order, where in-progress videos go, and the group order — and caches the clusters so `RESORT` (toggling "treat as unwatched", or changing a sort option in the preview) never calls the model again.
 4. Apply sends every move in one `browse/edit_playlist` call, polls until the read converges, stores the group map, and reloads; `WLHeadings` re-injects headings from the stored map on every page load until **Hide group headings** clears it.
 
 ### Hard constraints

@@ -5,6 +5,7 @@ import {
   DEFAULT_SETTINGS, SETTINGS_KEY, normalizeSettings, loadSettings, saveSettings,
 } from '../lib/settings.js';
 import { TAXONOMY } from '../lib/taxonomy.js';
+import { SORT_DEFAULTS } from '../lib/sort.js';
 
 /** Fake chrome.storage.sync: promise-based get/set/remove over a plain object. */
 function fakeSync(initial = {}) {
@@ -144,5 +145,25 @@ describe('saveSettings', () => {
     const sync = fakeSync();
     const saved = await saveSettings({ provider: 'openrouter', apiKey: 'k', model: 'openai/gpt-5-nano' }, sync);
     assert.equal(saved.model, 'openai/gpt-5-nano');
+  });
+});
+
+describe('settings.sort', () => {
+  it('defaults to the sorter\'s defaults', () => {
+    assert.deepEqual(DEFAULT_SETTINGS.sort, SORT_DEFAULTS);
+    assert.deepEqual(normalizeSettings({}).sort, SORT_DEFAULTS);
+  });
+
+  it('keeps whitelisted values and drops anything else back to the default', () => {
+    const s = normalizeSettings({ sort: { withinGroup: 'title', inProgress: 'nope', groupOrder: 'size' } });
+    assert.deepEqual(s.sort, { withinGroup: 'title', inProgress: 'top', groupOrder: 'size' });
+    assert.deepEqual(normalizeSettings({ sort: 'garbage' }).sort, SORT_DEFAULTS);
+  });
+
+  it('round-trips through saveSettings and loadSettings', async () => {
+    const sync = fakeSync();
+    await saveSettings({ sort: { inProgress: 'within' } }, sync);
+    const s = await loadSettings(sync);
+    assert.deepEqual(s.sort, { ...SORT_DEFAULTS, inProgress: 'within' });
   });
 });

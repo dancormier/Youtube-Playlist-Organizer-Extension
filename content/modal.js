@@ -5,6 +5,38 @@
 const WLModal = {
   IN_PROGRESS_LABEL: '▶ In Progress',
 
+  // Mirror of lib/sort.js SORT_CHOICES — content scripts cannot import lib/.
+  // tests/modal.test.js pins the two copies together.
+  SORT_CHOICES: {
+    withinGroup: [
+      { value: 'duration-asc', label: 'Shortest first' },
+      { value: 'duration-desc', label: 'Longest first' },
+      { value: 'playlist', label: 'Playlist order' },
+      { value: 'title', label: 'Title A–Z' },
+    ],
+    inProgress: [
+      { value: 'top', label: 'Own group on top' },
+      { value: 'within', label: 'Inside their category' },
+    ],
+    groupOrder: [
+      { value: 'taxonomy', label: 'My category order' },
+      { value: 'size', label: 'Largest group first' },
+      { value: 'size-asc', label: 'Smallest group first' },
+      { value: 'alpha', label: 'Alphabetical' },
+    ],
+  },
+  SORT_FIELD_LABELS: {
+    withinGroup: 'Within a group',
+    inProgress: 'Group in progress',
+    groupOrder: 'Group order',
+  },
+  // inProgress has exactly two values, so it renders as a checkbox: checked is
+  // 'top', unchecked is 'within'.
+  SORT_CHECKBOX_VALUES: { inProgress: { on: 'top', off: 'within' } },
+  // Collapsed by default; remembered for the life of the page so a re-render
+  // after a change does not fold the panel the user just opened.
+  _sortOptionsOpen: false,
+
   _root: null,
   _lastFocused: null,
   _handlers: {},
@@ -44,9 +76,17 @@ const WLModal = {
       : `${minutes}:${String(secs).padStart(2, '0')}`;
   },
 
+  /**
+   * Sorted videos carry `inProgress` from lib/sort.js; a `cluster: null` fallback
+   * keeps a sortState persisted before that field existed rendering correctly.
+   */
+  isInProgress(video) {
+    return video.inProgress ?? video.cluster === null;
+  },
+
   metaFor(video) {
     if (video.unavailable) return 'unavailable';
-    if (video.cluster === null) {
+    if (this.isInProgress(video)) {
       const pct = Number(video.percentWatched) || 0;
       return `${this.formatDuration(video.duration * (1 - pct / 100))} left`;
     }
@@ -291,16 +331,42 @@ const WLModal = {
     if (cancellable) cancel.focus();
   },
 
-  showPreview(sortOrder) {
+  /**
+   * `sortOptions` is the set the order was built with; when given, the option
+   * selects render above the list. Duration mode passes none and gets no row.
+   */
+  showPreview(sortOrder, sortOptions = null) {
     const body = this._body();
     const footer = this._footer();
     if (!body) return;
 
     this._cancellable = true;
 
+    // A re-render triggered by one of the controls must not steal focus from it:
+    // arrow keys on a focused <select> fire `change` per step in Firefox, and
+    // jumping to Apply after each would strand a keyboard user.
+    const focusedControl = document.activeElement?.getAttribute?.('data-wl-sort') ?? null;
+
     this.setStatus('');
     body.textContent = '';
     footer.textContent = '';
+
+    if (sortOptions) {
+      const row = this._renderSortOptions(sortOptions);
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'wl-sort-toggle';
+      toggle.setAttribute('data-wl-sort', 'toggle');
+      toggle.setAttribute('aria-expanded', String(this._sortOptionsOpen));
+      toggle.innerHTML = `<span>Sort options</span><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.707 8.793a1 1 0 00-1.414 0L12 14.086 6.707 8.793a1 1 0 10-1.414 1.414L12 16.914l6.707-6.707a1 1 0 000-1.414Z"/></svg>`;
+      row.hidden = !this._sortOptionsOpen;
+      toggle.addEventListener('click', () => {
+        this._sortOptionsOpen = !this._sortOptionsOpen;
+        row.hidden = !this._sortOptionsOpen;
+        toggle.setAttribute('aria-expanded', String(this._sortOptionsOpen));
+      });
+      body.append(toggle, row);
+    }
 
     for (const group of this.toGroups(sortOrder)) {
       if (group.name !== null) {
@@ -309,6 +375,7 @@ const WLModal = {
           ? 'wl-group-heading wl-in-progress'
           : 'wl-group-heading';
         heading.textContent = group.name;
+        heading.appendChild(this._renderGroupMeta(group.videos));
         body.appendChild(heading);
       }
       for (const video of group.videos) body.appendChild(this._renderItem(video));
@@ -327,7 +394,84 @@ const WLModal = {
     cancel.addEventListener('click', () => this._cancel());
 
     footer.append(apply, cancel);
-    apply.focus();
+    const restore = focusedControl
+      ? body.querySelector?.(`[data-wl-sort="${focusedControl}"]`)
+      : null;
+    (restore || apply).focus();
+  },
+
+  /** "12 videos · 3h 12m" beside a preview heading, same rule as the injected headings. */
+  _renderGroupMeta(videos) {
+    const meta = document.createElement('span');
+    meta.className = 'wl-group-meta';
+    const count = `${videos.length} video${videos.length === 1 ? '' : 's'}`;
+    // WLHeadings loads after this file but this runs at click time, long after
+    // every content script is in — the same reason showModes can call present().
+    const remaining = WLHeadings.remainingSeconds(videos);
+    meta.textContent = remaining > 0 ? `${count} · ${WLHeadings.formatTotal(remaining)}` : count;
+    return meta;
+  },
+
+  _renderSortOptions(sortOptions) {
+    const row = document.createElement('div');
+    row.className = 'wl-sort-options';
+    const controls = [];
+
+    const valueOf = (control) => {
+      const key = control.getAttribute('data-wl-sort');
+      const toggle = this.SORT_CHECKBOX_VALUES[key];
+      if (toggle) return control.checked ? toggle.on : toggle.off;
+      return control.value || sortOptions[key];
+    };
+    // Read every control live: two quick changes before the first re-sort
+    // returns must not revert each other through a render-time snapshot.
+    const emit = () => {
+      const current = {};
+      for (const control of controls) current[control.getAttribute('data-wl-sort')] = valueOf(control);
+      this._handlers.onSortOptionsChange?.(current);
+    };
+
+    for (const [key, choices] of Object.entries(this.SORT_CHOICES)) {
+      const field = document.createElement('label');
+      const toggle = this.SORT_CHECKBOX_VALUES[key];
+
+      if (toggle) {
+        field.className = 'wl-sort-check';
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.setAttribute('data-wl-sort', key);
+        box.checked = sortOptions[key] === toggle.on;
+        box.addEventListener('change', emit);
+        controls.push(box);
+        const caption = document.createElement('span');
+        caption.textContent = this.SORT_FIELD_LABELS[key];
+        field.append(box, caption);
+        row.appendChild(field);
+        continue;
+      }
+
+      field.className = 'wl-sort-field';
+      const caption = document.createElement('span');
+      caption.className = 'wl-sort-label';
+      caption.textContent = this.SORT_FIELD_LABELS[key];
+
+      const select = document.createElement('select');
+      select.className = 'wl-sort-select';
+      select.setAttribute('data-wl-sort', key);
+      for (const { value, label } of choices) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = label;
+        option.selected = value === sortOptions[key];
+        select.appendChild(option);
+      }
+      select.addEventListener('change', emit);
+      controls.push(select);
+
+      field.append(caption, select);
+      row.appendChild(field);
+    }
+    return row;
   },
 
   _renderItem(video) {
@@ -350,7 +494,7 @@ const WLModal = {
       toggle.className = 'wl-unwatch-btn';
       toggle.type = 'button';
       toggle.textContent = 'Unwatched';
-      toggle.setAttribute('aria-pressed', String(video.cluster !== null));
+      toggle.setAttribute('aria-pressed', String(!this.isInProgress(video)));
       toggle.setAttribute('aria-label', `Treat "${video.title}" as unwatched`);
       toggle.addEventListener('click', () => this._handlers.onToggleUnwatched?.(video.id));
       row.appendChild(toggle);

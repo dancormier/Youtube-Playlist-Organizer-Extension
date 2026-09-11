@@ -11,7 +11,35 @@ const WLHeadings = {
   _debounce: null,
 
   /**
-   * One entry per group, naming the video that starts it and how many it holds.
+   * Seconds left to watch across `videos`: the whole duration of an unwatched
+   * video, the unwatched part of a started one. A started video is one the
+   * sorter flagged, or one with a null cluster (a sortState persisted before
+   * the flag existed). Videos with no numeric duration contribute nothing.
+   */
+  remainingSeconds(videos) {
+    let total = 0;
+    for (const video of videos) {
+      const duration = Number(video.duration);
+      if (!Number.isFinite(duration)) continue;
+      const started = video.inProgress === true || video.cluster === null;
+      const pct = started ? Number(video.percentWatched) || 0 : 0;
+      total += duration * (100 - pct) / 100;
+    }
+    return total;
+  },
+
+  /** "3h 12m", "48m", "2m" — a minute is the finest unit worth showing on a heading. */
+  formatTotal(seconds) {
+    const total = Math.max(0, Number(seconds) || 0);
+    const minutes = total > 0 ? Math.max(1, Math.round(total / 60)) : 0;
+    const hours = Math.floor(minutes / 60);
+    if (hours === 0) return `${minutes}m`;
+    return minutes % 60 === 0 ? `${hours}h` : `${hours}h ${minutes % 60}m`;
+  },
+
+  /**
+   * One entry per group, naming the video that starts it, how many it holds
+   * and how many seconds are left to watch in it.
    * A video with no `cluster` property at all (duration mode — see
    * lib/sort.js's buildDurationSortOrder) gets no heading, mirroring
    * WLModal.toGroups's handling of the same case.
@@ -24,10 +52,11 @@ const WLHeadings = {
       if (!('cluster' in video)) continue;
       const name = video.cluster === null ? this.IN_PROGRESS_LABEL : video.cluster;
       if (!current || current.name !== name) {
-        current = { videoId: video.id, name, count: 0 };
+        current = { videoId: video.id, name, count: 0, remaining: 0 };
         boundaries.push(current);
       }
       current.count++;
+      current.remaining += this.remainingSeconds([video]);
     }
     return boundaries;
   },
@@ -50,7 +79,8 @@ const WLHeadings = {
     return null;
   },
 
-  _build(name, count) {
+  // `remaining` is undefined on a group map stored before it was recorded.
+  _build(name, count, remaining) {
     const heading = document.createElement('h2');
     heading.className = name === this.IN_PROGRESS_LABEL
       ? 'wl-playlist-heading wl-in-progress'
@@ -66,6 +96,12 @@ const WLHeadings = {
       counter.className = 'wl-heading-count';
       counter.textContent = `${count} video${count === 1 ? '' : 's'}`;
       heading.appendChild(counter);
+    }
+    if (remaining > 0) {
+      const total = document.createElement('span');
+      total.className = 'wl-heading-total';
+      total.textContent = this.formatTotal(remaining);
+      heading.appendChild(total);
     }
     return heading;
   },
@@ -100,12 +136,12 @@ const WLHeadings = {
   inject(boundaries) {
     let placed = 0;
 
-    for (const { videoId, name, count } of boundaries) {
+    for (const { videoId, name, count, remaining } of boundaries) {
       const item = this._itemFor(videoId);
       if (!item) continue;
 
       const existing = this._headingFor(name);
-      const heading = existing || this._build(name, count || 0);
+      const heading = existing || this._build(name, count || 0, remaining);
       if (heading.parentNode !== item) item.appendChild(heading);
       item.classList.add(this.ANCHOR_CLASS);
       placed++;

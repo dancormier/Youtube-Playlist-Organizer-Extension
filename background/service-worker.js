@@ -1,6 +1,6 @@
 // background/service-worker.js
 import { categorizeVideos, listModels } from '../lib/classify.js';
-import { buildSortOrder, buildDurationSortOrder } from '../lib/sort.js';
+import { buildSortOrder, buildDurationSortOrder, normalizeSortOptions } from '../lib/sort.js';
 import { loadSettings, normalizeSettings } from '../lib/settings.js';
 import { getProvider } from '../lib/providers.js';
 
@@ -12,12 +12,12 @@ const ICON_DEFAULT = { 16: '/icons/icon16.png', 48: '/icons/icon48.png', 128: '/
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'ANALYZE') {
-    handleAnalyze(message.videos, message.playlistId).then(sendResponse);
+    handleAnalyze(message.videos, message.playlistId, message.sortOptions).then(sendResponse);
     return true;
   }
 
   if (message.type === 'RESORT') {
-    handleResort(message.overrides, message.playlistId).then(sendResponse);
+    handleResort(message).then(sendResponse);
     return true;
   }
 
@@ -44,9 +44,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-async function handleAnalyze(videos, playlistId) {
+async function handleAnalyze(videos, playlistId, rawSortOptions) {
   try {
     const settings = await loadSettings();
+    const sortOptions = normalizeSortOptions(rawSortOptions ?? settings.sort);
     const provider = getProvider(settings.provider);
     if (provider.needsKey && !settings.apiKey) {
       return { success: false, error: "No API key configured. Open the extension's settings." };
@@ -56,21 +57,27 @@ async function handleAnalyze(videos, playlistId) {
 
     const classifiable = videos.filter(v => !v.unavailable);
     const clusters = await categorizeVideos(settings, classifiable);
-    const sortOrder = buildSortOrder(videos, clusters, unwatchedOverrides, settings.taxonomy);
+    const sortOrder = buildSortOrder(videos, clusters, unwatchedOverrides, settings.taxonomy, sortOptions);
 
     await chrome.storage.local.set({
       cachedClusters: { playlistId, clusters, videos },
-      sortState: { videos, clusters, sortOrder, timestamp: Date.now() },
+      sortState: { videos, clusters, sortOrder, sortOptions, timestamp: Date.now() },
     });
 
-    return { success: true, sortOrder };
+    return { success: true, sortOrder, sortOptions };
   } catch (err) {
     return { success: false, error: err.message };
   }
 }
 
-/** Re-sort using cached clusters. Never calls the model — watch state does not change grouping. */
-async function handleResort(overrides, playlistId) {
+/**
+ * Re-sort using cached clusters. Never calls the model — neither watch state
+ * nor the sort options change grouping. `overrides` and `sortOptions` are each
+ * optional: a message that omits one keeps the stored overrides / falls back to
+ * the saved settings, so the "treat as unwatched" toggle and the sort-option
+ * selects can each send only what they changed.
+ */
+async function handleResort({ overrides, sortOptions: rawSortOptions, playlistId }) {
   try {
     const { cachedClusters } = await chrome.storage.local.get('cachedClusters');
     if (!cachedClusters) {
@@ -81,14 +88,19 @@ async function handleResort(overrides, playlistId) {
     }
 
     const settings = await loadSettings();
-    await chrome.storage.local.set({ unwatchedOverrides: overrides });
-    const sortOrder = buildSortOrder(cachedClusters.videos, cachedClusters.clusters, overrides, settings.taxonomy);
+    const sortOptions = normalizeSortOptions(rawSortOptions ?? settings.sort);
+    if (overrides === undefined) {
+      ({ unwatchedOverrides: overrides = [] } = await chrome.storage.local.get('unwatchedOverrides'));
+    } else {
+      await chrome.storage.local.set({ unwatchedOverrides: overrides });
+    }
+    const sortOrder = buildSortOrder(cachedClusters.videos, cachedClusters.clusters, overrides, settings.taxonomy, sortOptions);
 
     await chrome.storage.local.set({
-      sortState: { videos: cachedClusters.videos, clusters: cachedClusters.clusters, sortOrder, timestamp: Date.now() },
+      sortState: { videos: cachedClusters.videos, clusters: cachedClusters.clusters, sortOrder, sortOptions, timestamp: Date.now() },
     });
 
-    return { success: true, sortOrder };
+    return { success: true, sortOrder, sortOptions };
   } catch (err) {
     return { success: false, error: err.message };
   }

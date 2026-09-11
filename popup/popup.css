@@ -80,6 +80,13 @@ body {
   font-size: 12px;
   color: #aaa;
 }
+.check-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.settings-form .check-field input { width: auto; margin: 0; accent-color: #c00; }
 .settings-form input,
 .settings-form select,
 .settings-form textarea {
@@ -95,6 +102,16 @@ body {
 .settings-form textarea {
   resize: vertical;
   line-height: 1.4;
+}
+/* Same replacement chevron as the preview's selects: the native arrow sits
+   flush against the border regardless of padding. */
+.settings-form select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M1 3l4 4 4-4' fill='none' stroke='%23f1f1f1' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
 }
 .settings-form input:focus,
 .settings-form select:focus,

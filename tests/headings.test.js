@@ -2,6 +2,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadGlobal } from './helpers/load-global.js';
+import { buildSortOrder } from '../lib/sort.js';
 
 // Load the real SELECTORS — headings.js reads SELECTORS.PLAYLIST_ITEMS/VIDEO_LINK
 // as a bare global (set by content/selectors.js in the real content-script context).
@@ -32,9 +33,37 @@ describe('WLHeadings.boundariesFrom', () => {
     // even when every field matches (see other boundariesFrom tests below for
     // the same pattern). Map to plain main-realm objects first.
     assert.deepEqual([...boundaries].map(b => ({ ...b })), [
-      { videoId: 'a', name: 'Music', count: 2 },
-      { videoId: 'c', name: 'Tech & AI', count: 1 },
+      { videoId: 'a', name: 'Music', count: 2, remaining: 0 },
+      { videoId: 'c', name: 'Tech & AI', count: 1, remaining: 0 },
     ]);
+  });
+
+  it('totals the unwatched seconds per group: whole durations, minus the watched part of started videos', () => {
+    const boundaries = load().boundariesFrom([
+      video({ id: 'a', cluster: 'Music', duration: 600 }),
+      video({ id: 'b', cluster: 'Music', duration: 1000, percentWatched: 75, inProgress: true }),
+      video({ id: 'c', cluster: 'Tech & AI', duration: 300, percentWatched: 50, inProgress: false }),
+    ]);
+    assert.deepEqual([...boundaries].map(b => b.remaining), [850, 300],
+      'an overridden video (inProgress false) counts in full whatever its percentage');
+  });
+
+  it('treats a null cluster as started even without the inProgress flag (legacy sortState)', () => {
+    const boundaries = load().boundariesFrom([
+      video({ id: 'a', cluster: null, duration: 1000, percentWatched: 90 }),
+      video({ id: 'b', cluster: null, duration: 200, percentWatched: 50 }),
+    ]);
+    assert.equal(boundaries[0].remaining, 200);
+  });
+
+  it('ignores videos with no numeric duration in the total but still counts them', () => {
+    const boundaries = load().boundariesFrom([
+      video({ id: 'a', cluster: 'Music', duration: 120 }),
+      video({ id: 'b', cluster: 'Music' }),
+      video({ id: 'c', cluster: 'Music', duration: 'n/a' }),
+    ]);
+    assert.equal(boundaries[0].count, 3);
+    assert.equal(boundaries[0].remaining, 120);
   });
 
   it('counts the videos in each group', () => {
@@ -82,6 +111,23 @@ describe('WLHeadings.boundariesFrom', () => {
     ]);
     assert.deepEqual([...boundaries], []);
   });
+});
+
+describe('WLHeadings.formatTotal', () => {
+  const cases = [
+    [0, '0m'],
+    [59, '1m'],
+    [60, '1m'],
+    [3600, '1h'],
+    [3661, '1h 1m'],
+    [86400, '24h'],
+    [90061, '25h 1m'],
+  ];
+  for (const [seconds, expected] of cases) {
+    it(`formats ${seconds}s as "${expected}"`, () => {
+      assert.equal(load().formatTotal(seconds), expected);
+    });
+  }
 });
 
 describe('WLHeadings.IN_PROGRESS_LABEL constant drift', () => {
@@ -333,6 +379,31 @@ describe('WLHeadings.inject', () => {
     const heading = headingIn(0);
     assert.equal(heading.children[0].textContent, 'Music');
     assert.equal(heading.children[1].textContent, '3 videos');
+    assert.equal(heading.children.length, 2, 'a group map stored without remaining gets no total');
+  });
+
+  it('appends the unwatched total after the count', () => {
+    const { document, headingIn } = fakePlaylist(['a']);
+    const headings = loadGlobal('content/headings.js', 'WLHeadings', {
+      document, SELECTORS, MutationObserver: class { observe() {} disconnect() {} },
+    });
+
+    headings.inject([{ videoId: 'a', name: 'Music', count: 3, remaining: 11520 }]);
+
+    const heading = headingIn(0);
+    assert.deepEqual(heading.children.map(el => el.className), ['', 'wl-heading-count', 'wl-heading-total']);
+    assert.equal(heading.children[2].textContent, '3h 12m');
+  });
+
+  it('omits the total when nothing is left to watch', () => {
+    const { document, headingIn } = fakePlaylist(['a']);
+    const headings = loadGlobal('content/headings.js', 'WLHeadings', {
+      document, SELECTORS, MutationObserver: class { observe() {} disconnect() {} },
+    });
+
+    headings.inject([{ videoId: 'a', name: 'Music', count: 1, remaining: 0 }]);
+
+    assert.equal(headingIn(0).children.length, 2);
   });
 });
 
@@ -624,5 +695,27 @@ describe('WLHeadings.inject drift repair', () => {
       container.children.filter(el => el.tagName === 'h2').length, 0,
       'no heading may be a direct child of the sortable container',
     );
+  });
+});
+
+describe('WLHeadings.boundariesFrom against real sort output', () => {
+  // With inProgress 'within' the sorter emits no null cluster, so no In Progress
+  // heading must appear and started videos count toward their group.
+  const clusters = { clusters: [{ name: 'Music', videoIds: ['a', 'b'] }] };
+  const videos = [
+    { id: 'a', title: 'A', duration: 600, percentWatched: 50, unavailable: false },
+    { id: 'b', title: 'B', duration: 600, percentWatched: 0, unavailable: false },
+  ];
+
+  it('emits an In Progress heading only for the top option', () => {
+    const headings = load();
+    const top = headings.boundariesFrom(buildSortOrder(videos, clusters, [], undefined, { inProgress: 'top' }));
+    assert.deepEqual([...top].map(b => ({ ...b })), [
+      { videoId: 'a', name: headings.IN_PROGRESS_LABEL, count: 1, remaining: 300 },
+      { videoId: 'b', name: 'Music', count: 1, remaining: 600 },
+    ]);
+
+    const within = headings.boundariesFrom(buildSortOrder(videos, clusters, [], undefined, { inProgress: 'within' }));
+    assert.deepEqual([...within].map(b => ({ ...b })), [{ videoId: 'a', name: 'Music', count: 2, remaining: 900 }]);
   });
 });

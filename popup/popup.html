@@ -66,6 +66,22 @@
       <textarea id="extra" rows="3" placeholder="e.g. Keep cooking and baking separate"></textarea>
     </div>
 
+    <div class="field">
+      <label for="sort-within-group">Sort: within a group</label>
+      <select id="sort-within-group"></select>
+    </div>
+
+    <label class="check-field" for="sort-in-progress">
+      <input type="checkbox" id="sort-in-progress">
+      Sort: group in progress
+    </label>
+
+    <div class="field">
+      <label for="sort-group-order">Sort: group order</label>
+      <select id="sort-group-order"></select>
+      <p class="help">Defaults for Analyze &amp; sort. The preview has the same controls; changing them there updates these.</p>
+    </div>
+
     <div class="row">
       <button type="submit" id="save-btn">Save</button>
       <p id="status" class="status-text" role="status"></p>

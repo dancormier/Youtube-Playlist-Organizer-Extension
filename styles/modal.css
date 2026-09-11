@@ -149,6 +149,81 @@ html[dark] .wl-trigger.wl-trigger-inline:hover { background: rgba(255, 255, 255,
 .wl-mode-btn:hover { background: rgba(255, 255, 255, 0.08); }
 .wl-mode-btn small { display: block; margin-top: 4px; color: #aaa; font-size: 1.2rem; }
 
+/* Sort-option selects above the preview list. Same fill and text as
+   .wl-modal-btn so the row reads as controls, not content. */
+.wl-sort-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  margin: 4px 0 0;
+  padding: 8px 0;
+  border: none;
+  background: none;
+  color: #aaa;
+  font-family: inherit;
+  font-size: 1.3rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.wl-sort-toggle:hover { color: #f1f1f1; }
+.wl-sort-toggle svg { width: 18px; height: 18px; transition: transform 120ms ease; }
+.wl-sort-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+.wl-sort-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid #3f3f3f;
+}
+.wl-sort-options[hidden] { display: none; }
+/* One option per row: a fixed-width caption, then the control right beside it. */
+.wl-sort-field,
+.wl-sort-check {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  min-height: 32px;
+}
+.wl-sort-label,
+.wl-sort-check > span {
+  flex: 0 0 130px;
+  color: #aaa;
+  font-size: 1.3rem;
+}
+.wl-sort-check {
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+  color: #aaa;
+  font-size: 1.3rem;
+  cursor: pointer;
+}
+.wl-sort-check input { margin: 0; accent-color: #f1f1f1; cursor: pointer; }
+.wl-sort-select {
+  height: 32px;
+  padding: 0 34px 0 12px;
+  border: none;
+  border-radius: 16px;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #f1f1f1;
+  font-family: inherit;
+  font-size: 1.3rem;
+  cursor: pointer;
+  /* The native arrow ignores padding and sits flush against the rounded edge,
+     so it is replaced with our own chevron placed by background-position. */
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M1 3l4 4 4-4' fill='none' stroke='%23f1f1f1' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+.wl-sort-select:hover { background-color: rgba(255, 255, 255, 0.2); }
+/* The dropdown list inherits the page's colour scheme, so it needs the dark
+   surface set explicitly or light-theme YouTube shows white text on white. */
+.wl-sort-select option { background: #212121; color: #f1f1f1; }
+
 .wl-group-heading {
   position: sticky;
   top: 0;
@@ -162,6 +237,14 @@ html[dark] .wl-trigger.wl-trigger-inline:hover { background: rgba(255, 255, 255,
   color: #69b3ff;
 }
 .wl-group-heading.wl-in-progress { color: #ff8a80; }
+.wl-group-heading .wl-group-meta {
+  margin-left: 10px;
+  color: #aaa;
+  font-size: 1.2rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
 
 .wl-modal-item {
   display: flex;

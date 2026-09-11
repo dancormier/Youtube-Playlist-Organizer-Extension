@@ -38,12 +38,16 @@
 
 .wl-playlist-heading.wl-in-progress { color: #ff8a80; }
 
-.wl-playlist-heading .wl-heading-count {
+.wl-playlist-heading .wl-heading-count,
+.wl-playlist-heading .wl-heading-total {
   color: #909090;
   font-weight: 400;
   text-transform: none;
   letter-spacing: 0;
 }
+/* The flex gap already separates the spans; the middot makes "12 videos · 3h 12m"
+   read as one phrase rather than two floating facts. */
+.wl-playlist-heading .wl-heading-total::before { content: '· '; }
 
 /* Injected headings sit on YouTube's own background, which follows the
    viewer's OS/browser theme — the dark-theme colours above are illegible on
@@ -57,7 +61,8 @@
 
   .wl-playlist-heading.wl-in-progress { color: #b3261e; }
 
-  .wl-playlist-heading .wl-heading-count {
+  .wl-playlist-heading .wl-heading-count,
+  .wl-playlist-heading .wl-heading-total {
     color: #5f5f5f;
   }
 }
