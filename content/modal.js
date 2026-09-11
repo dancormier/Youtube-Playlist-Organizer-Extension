@@ -401,6 +401,14 @@ const WLModal = {
       body.append(toggle, row);
     }
 
+    // The eye control only appears on hover, so say what it does once, up front.
+    if (sortOrder.some(v => 'cluster' in v && this.hasWatchTime(v))) {
+      const hint = document.createElement('p');
+      hint.className = 'wl-hint';
+      hint.textContent = 'Started videos keep their place by time left. Hover one and click the eye to sort it as unwatched instead.';
+      body.appendChild(hint);
+    }
+
     for (const group of this.toGroups(sortOrder)) {
       if (group.name !== null) {
         const heading = document.createElement('h3');

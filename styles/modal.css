@@ -395,3 +395,11 @@ html[dark] .wl-modal-backdrop {
 
 /* No hover to reveal it on touch devices: keep the control visible there. */
 @media (hover: none) { .wl-unwatch-btn { opacity: 1; } }
+
+.wl-hint {
+  margin: 0;
+  padding: 10px 20px 4px;
+  color: var(--wl-text-2);
+  font-size: 1.2rem;
+  line-height: 1.8rem;
+}

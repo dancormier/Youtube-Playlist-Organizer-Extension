@@ -284,7 +284,7 @@ describe('WLModal.showPreview sort options', () => {
 
   it('draws the in-progress heading as a plain coloured label with no icon', () => {
     const { body } = previewWith({ sortOrder: [video({ id: 'a', cluster: null, inProgress: true, percentWatched: 50 })] });
-    const heading = body.children[0];
+    const heading = body.children.find(el => el.className.startsWith('wl-group-heading'));
     assert.equal(heading.className, 'wl-group-heading wl-in-progress');
     assert.equal(heading.innerHTML, '');
     assert.deepEqual(heading.children.map(el => el.className), ['wl-group-label', 'wl-heading-meta']);
@@ -499,6 +499,13 @@ describe('WLModal._renderItem unwatched toggle', () => {
     const undone = itemWith(video({ percentWatched: 50, cluster: 'Music', inProgress: false })).children[1];
     assert.equal(undone.getAttribute('aria-label'), 'Mark as unwatched', 'name is fixed; aria-pressed carries the state');
     assert.equal(undone.title, 'Marked as unwatched (click to undo)');
+  });
+
+  it('explains the eye control once, only when a started video is in an AI preview', () => {
+    const withStarted = previewWith({ sortOrder: [video({ id: 'a', percentWatched: 50, cluster: 'Music', inProgress: true })] });
+    assert.ok(withStarted.body.children.some(el => el.className === 'wl-hint'));
+    const noneStarted = previewWith({ sortOrder: [video({ id: 'a', cluster: 'Music' })] });
+    assert.ok(!noneStarted.body.children.some(el => el.className === 'wl-hint'));
   });
 
   it('pairs the button with the position-over-total time and omits both for unwatched videos', () => {
