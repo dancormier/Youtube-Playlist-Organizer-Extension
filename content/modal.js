@@ -55,8 +55,10 @@ const WLModal = {
   // so a re-render after the change lands back on the option rows.
   _openSortKey: null,
 
-  // Whether the mode view offers Undo; set by open() from the stored undo state.
+  // Whether the mode view offers Undo and Clear headings; set by open() from
+  // the panel's stored state.
   _canUndo: false,
+  _hasHeadings: false,
 
   _root: null,
   _lastFocused: null,
@@ -249,10 +251,11 @@ const WLModal = {
 
   // ── Modal shell ────────────────────────────────────────────────────────
 
-  open(handlers = {}, { canUndo = false } = {}) {
+  open(handlers = {}, { canUndo = false, hasHeadings = false } = {}) {
     this.close();
     this._handlers = handlers;
     this._canUndo = canUndo;
+    this._hasHeadings = hasHeadings;
     this._lastFocused = document.activeElement;
 
     const backdrop = document.createElement('div');
@@ -351,6 +354,15 @@ const WLModal = {
     });
     wrap.append(...buttons);
     body.appendChild(wrap);
+
+    if (this._hasHeadings) {
+      const clear = document.createElement('button');
+      clear.className = 'wl-modal-btn';
+      clear.type = 'button';
+      clear.textContent = 'Clear headings';
+      clear.addEventListener('click', () => this._handlers.onClearHeadings?.());
+      footer.appendChild(clear);
+    }
 
     if (this._canUndo) {
       const undo = document.createElement('button');

@@ -34,10 +34,17 @@ const WLPanel = {
       onSort: (mode) => this.runSort(mode),
       onApply: () => this.applySort(),
       onUndo: () => this.undoSort(),
+      onClearHeadings: () => this.clearHeadings(),
       onCancel: () => { this._runId++; this.currentSortOrder = []; this.currentMode = null; },
       onToggleUnwatched: (videoId) => this.toggleUnwatched(videoId),
       onSortOptionsChange: (sortOptions) => this.changeSortOptions(sortOptions),
-    }, { canUndo });
+    }, { canUndo, hasHeadings: this._headingsState !== null });
+  },
+
+  /** The dialog's Clear headings button: drop them for good and close. */
+  clearHeadings() {
+    this._dropHeadings();
+    WLModal.close();
   },
 
   _setHeadingsState(state) {

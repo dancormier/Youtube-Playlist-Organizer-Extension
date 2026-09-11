@@ -12,6 +12,7 @@ A browser extension that sorts a YouTube playlist — most usefully **Watch Late
 - Preview the result before applying and, in AI mode, mark a started video as unwatched so it sorts with the rest of its group
 - Applying switches the playlist to **Manual** sort if it is on another sort (a reorder only shows through the Manual view), sends every move in one batched request, then draws group headings into the playlist
 - A **Hide headings / Show headings** chip after Organize toggles the headings; they are dropped on their own once the playlist's videos change or you pick another sort in YouTube's own sort menu
+- **Clear headings** in the Organize dialog removes the headings for good
 - **Undo last sort** in the Organize dialog puts the playlist back in the order it had before the last apply (as long as no video was added or removed since)
 
 Videos less than 10% watched count as unwatched. YouTube marks a video partially watched after roughly two seconds, so a stricter threshold promoted far too many videos.

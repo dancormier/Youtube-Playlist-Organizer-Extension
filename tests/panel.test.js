@@ -1221,6 +1221,43 @@ describe('undo', () => {
     assert.deepEqual(opened, [true, false, false]);
   });
 
+  it('openModal offers Clear headings whenever headings are stored, shown or hidden', async () => {
+    const opened = [];
+    const WLPanel = loadPanel({
+      WLModal: {
+        mountTrigger() {}, removeTrigger() {}, syncHeadingsToggle() {}, verifyTrigger() { return { present: false }; },
+        close() {}, open(handlers, options) { opened.push(options.hasHeadings); }, showBusy() {}, showPreview() {}, showError() {}, setStatus() {},
+      },
+    });
+    await WLPanel.openModal();
+    WLPanel._headingsState = 'shown';
+    await WLPanel.openModal();
+    WLPanel._headingsState = 'hidden';
+    await WLPanel.openModal();
+    assert.deepEqual(opened, [false, true, true]);
+  });
+
+  it('clearHeadings drops the headings, the chip and the stored map, then closes the dialog', async () => {
+    const calls = { clear: 0, saved: [], toggle: [], closed: 0 };
+    const WLPanel = loadPanel({
+      WLStorage: { getGroupMap: async () => ({}), setGroupMap: async (m) => { calls.saved.push({ ...m }); }, getUndo: async () => ({}), setUndo: async () => {} },
+      WLHeadings: { boundariesFrom: () => [], hashIds: () => '', watch() {}, stop() {}, clear: () => { calls.clear++; } },
+      WLModal: {
+        mountTrigger() {}, removeTrigger() {}, syncHeadingsToggle(state) { calls.toggle.push(state); }, verifyTrigger() { return { present: false }; },
+        close() { calls.closed++; }, open() {}, showBusy() {}, showPreview() {}, showError() {}, setStatus() {},
+      },
+    });
+    WLPanel._headingsState = 'shown';
+    const clears = calls.clear;
+    WLPanel.clearHeadings();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(calls.clear, clears + 1);
+    assert.equal(WLPanel._headingsState, null);
+    assert.equal(calls.toggle.at(-1), null);
+    assert.deepEqual(calls.saved.at(-1), {});
+    assert.ok(calls.closed >= 1);
+  });
+
   it('openModal does not open after the session changed during the storage read', async () => {
     let opened = 0;
     const WLPanel = loadPanel({

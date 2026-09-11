@@ -149,7 +149,7 @@ function fakeUi() {
   return { make, document: { createElement: make } };
 }
 
-function showModesWith({ canUndo = false, handlers = {} }) {
+function showModesWith({ canUndo = false, hasHeadings = false, handlers = {} }) {
   const { make, document } = fakeUi();
   const modal = loadGlobal('content/modal.js', 'WLModal', { document });
   const body = make('div');
@@ -158,6 +158,7 @@ function showModesWith({ canUndo = false, handlers = {} }) {
   modal._footer = () => footer;
   modal._handlers = handlers;
   modal._canUndo = canUndo;
+  modal._hasHeadings = hasHeadings;
   modal.showModes();
   return { body, footer, labels: footer.children.map(el => el.textContent) };
 }
@@ -186,6 +187,19 @@ describe('WLModal.showModes', () => {
   it('never offers Hide group headings: the chip beside Organize owns visibility', () => {
     const { labels } = showModesWith({ canUndo: true });
     assert.ok(!labels.includes('Hide group headings'));
+  });
+
+  it('offers Clear headings before Undo when the playlist has stored headings', () => {
+    const { labels } = showModesWith({ canUndo: true, hasHeadings: true });
+    assert.deepEqual([...labels], ['Clear headings', 'Undo last sort', 'Close']);
+    assert.deepEqual([...showModesWith({ hasHeadings: true }).labels], ['Clear headings', 'Close']);
+  });
+
+  it('wires Clear headings to onClearHeadings', () => {
+    let called = false;
+    const { footer } = showModesWith({ hasHeadings: true, handlers: { onClearHeadings: () => { called = true; } } });
+    footer.children.find(el => el.textContent === 'Clear headings')._listeners.click();
+    assert.equal(called, true);
   });
 
   it('offers the AI sort and the three simple sorts as rows, in that order, with their captions', () => {
