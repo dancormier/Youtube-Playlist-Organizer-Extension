@@ -298,7 +298,7 @@ html[dark] .wl-modal-backdrop {
   font-weight: 400;
   line-height: 1.8rem;
 }
-.wl-group-heading .wl-heading-total::before { content: '· '; }
+.wl-group-heading .wl-heading-total::before { content: ' · '; }
 
 .wl-modal-item {
   display: flex;

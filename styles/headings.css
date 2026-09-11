@@ -67,4 +67,13 @@ html[dark] .wl-playlist-heading {
 }
 /* The middot makes "12 videos · 3h 12m" read as one phrase rather than two
    floating facts. */
-.wl-playlist-heading .wl-heading-total::before { content: '· '; }
+.wl-playlist-heading .wl-heading-total::before { content: ' · '; }
+
+/* A wrapping title would outgrow the anchor's fixed margin-top gap and overlap
+   the item above; the label ellipsizes instead. */
+.wl-playlist-heading .wl-heading-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

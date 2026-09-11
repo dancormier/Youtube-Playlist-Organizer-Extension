@@ -106,9 +106,15 @@ const WLModal = {
     return this.formatDuration(video.duration);
   },
 
-  /** Where the unwatch control can help: videos YouTube considers started. */
+  /**
+   * Where the unwatch control can help: videos the sorter treats as started,
+   * or ones the user overrode. Under 10% is "unwatched" to the sorter
+   * (lib/sort.js WATCHED_THRESHOLD), so a 5% video gets no control — a
+   * pressed button there would be lying and clicking it would change nothing.
+   */
   hasWatchTime(video) {
-    return !video.unavailable && video.percentWatched > 0;
+    if (video.unavailable) return false;
+    return this.isInProgress(video) || Number(video.percentWatched) >= 10;
   },
 
   // ── Trigger ────────────────────────────────────────────────────────────
@@ -597,10 +603,10 @@ const WLModal = {
       toggle.className = 'wl-unwatch-btn';
       toggle.type = 'button';
       toggle.innerHTML = this.RESTART_ICON;
+      // The name stays fixed; aria-pressed carries the state (ARIA toggle-button pattern).
       toggle.setAttribute('aria-pressed', String(pressed));
-      const name = pressed ? 'Undo mark as unwatched' : 'Mark as unwatched';
-      toggle.setAttribute('aria-label', name);
-      toggle.title = name;
+      toggle.setAttribute('aria-label', 'Mark as unwatched');
+      toggle.title = pressed ? 'Marked as unwatched (click to undo)' : 'Mark as unwatched';
       toggle.addEventListener('click', () => this._handlers.onToggleUnwatched?.(video.id));
       row.appendChild(toggle);
     }

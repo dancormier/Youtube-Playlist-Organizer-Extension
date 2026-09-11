@@ -75,6 +75,15 @@ describe('WLModal.metaFor', () => {
     assert.equal(load().metaFor(video({ duration: 600 })), '10:00');
   });
 
+  it('treats a video under the 10% watched threshold as plain unwatched', () => {
+    // Regression: the sorter zeroes progress under WATCHED_THRESHOLD, so such a
+    // video arrived as not-in-progress and showed "0:00 / 10:00" with a pressed
+    // "undo" button that could not change anything.
+    const modal = load();
+    assert.equal(modal.metaFor(video({ duration: 600, percentWatched: 5, inProgress: false, cluster: 'Music' })), '10:00');
+    assert.equal(modal.hasWatchTime(video({ duration: 600, percentWatched: 5, inProgress: false, cluster: 'Music' })), false);
+  });
+
   it('shows a marker for unavailable videos', () => {
     assert.equal(load().metaFor(video({ unavailable: true })), 'unavailable');
   });
@@ -453,8 +462,8 @@ describe('WLModal._renderItem unwatched toggle', () => {
     assert.equal(started.title, 'Mark as unwatched');
 
     const undone = itemWith(video({ percentWatched: 50, cluster: 'Music', inProgress: false })).children[2];
-    assert.equal(undone.getAttribute('aria-label'), 'Undo mark as unwatched');
-    assert.equal(undone.title, 'Undo mark as unwatched');
+    assert.equal(undone.getAttribute('aria-label'), 'Mark as unwatched', 'name is fixed; aria-pressed carries the state');
+    assert.equal(undone.title, 'Marked as unwatched (click to undo)');
   });
 
   it('pairs the button with the position-over-total time and omits both for unwatched videos', () => {
