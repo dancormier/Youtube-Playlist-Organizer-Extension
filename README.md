@@ -9,7 +9,7 @@ A browser extension that sorts a YouTube playlist — most usefully **Watch Late
 - **Sort by duration** — shortest first. Local, instant, no API key
 - **Sort by title** — A to Z. Local, instant, no API key
 - **Sort by channel** — channel name A to Z, then title. Local, instant, no API key
-- Preview the result before applying, with per-video "treat as unwatched" toggles
+- Preview the result before applying and, in AI mode, mark a started video as unwatched so it sorts with the rest of its group
 - Applying sends every move in one batched request, then draws group headings into the playlist
 - **Hide group headings** removes the headings and stops them returning
 
