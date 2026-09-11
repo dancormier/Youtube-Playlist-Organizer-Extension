@@ -125,7 +125,7 @@ Your key is stored in the browser's extension sync storage and is only ever sent
 - **Reordering writes to the real playlist.** **Undo last sort** restores the order from before the most recent apply, and only that one; it is refused once a video has been added or removed.
 - **Group headings exist only in your browser.** The extension draws them; YouTube stores nothing but the new order, so other devices see the order without the headings.
 - **Playlists over ~2,000 videos are silently truncated.** Reading stops after 20 pages and the result looks complete.
-- **The sort chip is matched by its English label.** Switching the playlist to Manual before applying looks for a menu entry called "Manual"; in another YouTube language, pick Manual yourself before applying.
+- **The Manual sort switch relies on YouTube's menu order.** Before applying, the extension opens the playlist's sort menu and picks its first entry, which YouTube lists as Manual in every language. If YouTube ever reorders that menu, pick Manual yourself before applying.
 - **"Treat as unwatched" only affects sorting.** It cannot clear YouTube's red progress bar (see [ARCHITECTURE.md](ARCHITECTURE.md) for why).
 - **Titles and channel names are sent to the AI provider you configure**, on your key, at your cost.
 - **Several Google accounts in one browser profile:** the extension reads the account index from the page (`SESSION_INDEX`) and addresses that account. Brand/channel accounts go through `DELEGATED_SESSION_ID`. If a playlist ever shows another account's videos, open an issue with the account setup.

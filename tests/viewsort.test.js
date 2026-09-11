@@ -44,43 +44,62 @@ describe('WLViewSort.ensureManual', () => {
     assert.equal(await fakePage(null).WLViewSort.ensureManual(), 'no-chip');
   });
 
-  it('leaves a Manual playlist alone', async () => {
+  it('leaves an English Manual playlist alone without opening the menu', async () => {
     const { WLViewSort, state } = fakePage('Manual');
     assert.equal(await WLViewSort.ensureManual(), 'manual');
     assert.deepEqual(state.clicks, [], 'nothing clicked');
   });
 
-  it('opens the menu and picks Manual when another sort is selected', async () => {
+  it('opens the menu and picks the first entry when another sort is selected', async () => {
     const { WLViewSort, state } = fakePage('Date published (newest)');
     assert.equal(await WLViewSort.ensureManual(), 'switched');
     assert.deepEqual(state.clicks, ['chip', 'Manual']);
     assert.equal(state.label, 'Manual');
   });
 
-  it('fails and closes the menu again when it never offers Manual', async () => {
-    const { WLViewSort, state } = fakePage('Date added (newest)', ['Date added (newest)', 'Most popular']);
+  it('works in another language: the first menu entry is Manual whatever it is called', async () => {
+    const german = ['Manuell', 'Hinzugefügt am... (neueste zuerst)', 'Beliebteste'];
+    const { WLViewSort, state } = fakePage('Hinzugefügt am... (neueste zuerst)', german);
+    assert.equal(await WLViewSort.ensureManual(), 'switched');
+    assert.deepEqual(state.clicks, ['chip', 'Manuell']);
+    assert.equal(state.label, 'Manuell');
+  });
+
+  it('in another language, recognises an already-Manual playlist by opening and closing the menu', async () => {
+    const german = ['Manuell', 'Hinzugefügt am... (neueste zuerst)', 'Beliebteste'];
+    const { WLViewSort, state } = fakePage('Manuell', german);
+    assert.equal(await WLViewSort.ensureManual(), 'manual');
+    assert.deepEqual(state.clicks, ['chip', 'chip'], 'opened to read the first entry, then closed');
+    assert.equal(state.label, 'Manuell');
+  });
+
+  it('fails and closes the menu again when the open menu is not the sort menu', async () => {
+    // A menu that never lists the chip's current label is some other dropdown.
+    const { WLViewSort, state } = fakePage('Date added (newest)', ['Save to playlist', 'Share']);
     const started = Date.now();
     assert.equal(await WLViewSort.ensureManual({ timeoutMs: 50 }), 'failed');
     assert.deepEqual(state.clicks, ['chip', 'chip'], 'the second chip click closes the menu it opened');
     assert.ok(Date.now() - started < 5000);
   });
 
-  it('never clicks a Manual item that is not laid out (a closed dropdown\'s copy)', async () => {
-    const { WLViewSort, state } = fakePage('Date added (newest)');
-    // The menu "opens" but its items report no layout boxes.
-    state.menuOpen = false;
-    const document = { querySelector: () => ({ textContent: 'Date added', click() { state.clicks.push('chip'); } }),
-      querySelectorAll: () => [{ textContent: 'Manual', getClientRects: () => [], click() { state.clicks.push('hidden Manual'); } }] };
+  it('ignores a sort menu that is not laid out (a closed dropdown\'s copy)', async () => {
+    const clicks = [];
+    const document = {
+      querySelector: () => ({ textContent: 'Date added', click() { clicks.push('chip'); } }),
+      querySelectorAll: () => [
+        { textContent: 'Manual', getClientRects: () => [], click() { clicks.push('hidden Manual'); } },
+        { textContent: 'Date added', getClientRects: () => [], click() {} },
+      ],
+    };
     const sort = loadGlobal('content/viewsort.js', 'WLViewSort', { document, SELECTORS });
     assert.equal(await sort.ensureManual({ timeoutMs: 50 }), 'failed');
-    assert.ok(!state.clicks.includes('hidden Manual'));
-    assert.equal(WLViewSort.isManual('Date added'), false);
+    assert.deepEqual(clicks, ['chip', 'chip']);
   });
 
   it('fails when the chip never changes after the click', async () => {
     const stuck = fakePage('Date added (newest)');
     const clicks = [];
-    stuck.WLViewSort._manualItem = () => ({ click() { clicks.push('ignored'); } });
+    stuck.WLViewSort._sortMenu = () => [{ textContent: 'Manual', click() { clicks.push('ignored'); } }];
     assert.equal(await stuck.WLViewSort.ensureManual({ timeoutMs: 50 }), 'failed');
     assert.deepEqual(clicks, ['ignored']);
   });

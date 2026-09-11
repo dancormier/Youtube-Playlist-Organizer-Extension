@@ -52,10 +52,11 @@ html[dark] .wl-trigger.wl-trigger-inline { background: rgba(255, 255, 255, 0.1);
 html[dark] .wl-trigger.wl-trigger-inline:hover { background: rgba(255, 255, 255, 0.2); }
 .wl-trigger.wl-trigger-inline svg { width: 18px; height: 18px; }
 
-/* The Show/Hide headings chip is the last chip in the row: same shape.
+/* The Show/Hide headings chip is the last chip in the row: same shape, and
+   no margin of its own since YouTube's chip wrappers carry the gap.
    Floating, it stacks above the floating Organize button. */
 .wl-headings-toggle { bottom: 76px; }
-.wl-headings-toggle.wl-trigger-inline { margin: 0 0 0 12px; }
+.wl-headings-toggle.wl-trigger-inline { margin: 0; }
 
 /* The modal speaks YouTube's account-menu vocabulary. Every colour is a token
    set here for the light theme and overridden under html[dark] — YouTube's
