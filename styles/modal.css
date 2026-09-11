@@ -392,3 +392,6 @@ html[dark] .wl-modal-backdrop {
   .wl-unwatch-btn { transition: none; }
   .wl-progress-fill { animation: none; width: 100%; opacity: 0.4; }
 }
+
+/* No hover to reveal it on touch devices: keep the control visible there. */
+@media (hover: none) { .wl-unwatch-btn { opacity: 1; } }
