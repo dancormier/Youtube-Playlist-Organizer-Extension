@@ -62,15 +62,45 @@ html[dark] .wl-trigger.wl-trigger-inline::before { background: rgba(255, 255, 25
 html[dark] .wl-trigger.wl-trigger-inline:hover { background: rgba(255, 255, 255, 0.2); }
 .wl-trigger.wl-trigger-inline svg { width: 18px; height: 18px; }
 
+/* The modal speaks YouTube's account-menu vocabulary. Every colour is a token
+   set here for the light theme and overridden under html[dark] — YouTube's
+   theme is that attribute, not the OS setting. */
 .wl-modal-backdrop {
+  --wl-surface: #fff;
+  --wl-text: #0f0f0f;
+  --wl-text-2: #606060;
+  --wl-layer: rgba(0, 0, 0, 0.05);
+  --wl-layer-2: rgba(0, 0, 0, 0.1);
+  --wl-outline: rgba(0, 0, 0, 0.2);
+  --wl-accent: #065fd4;
+  --wl-in-progress: #b3261e;
+  --wl-inverse-bg: #0f0f0f;
+  --wl-inverse-text: #fff;
+  --wl-shadow: 0 4px 32px rgba(0, 0, 0, 0.1);
+  --wl-scrim: rgba(0, 0, 0, 0.5);
+
   position: fixed;
   inset: 0;
   z-index: 2147483000;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--wl-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
+}
+html[dark] .wl-modal-backdrop {
+  --wl-surface: #212121;
+  --wl-text: #fff;
+  --wl-text-2: #aaa;
+  --wl-layer: rgba(255, 255, 255, 0.1);
+  --wl-layer-2: rgba(255, 255, 255, 0.2);
+  --wl-outline: rgba(255, 255, 255, 0.2);
+  --wl-accent: #3ea6ff;
+  --wl-in-progress: #ff8a80;
+  --wl-inverse-bg: #f1f1f1;
+  --wl-inverse-text: #0f0f0f;
+  --wl-shadow: 0 4px 32px rgba(0, 0, 0, 0.5);
+  --wl-scrim: rgba(0, 0, 0, 0.6);
 }
 
 .wl-modal {
@@ -78,12 +108,12 @@ html[dark] .wl-trigger.wl-trigger-inline:hover { background: rgba(255, 255, 255,
      Only the body scrolls — the actions are always reachable. */
   display: grid;
   grid-template-rows: auto 1fr auto;
-  width: min(680px, 100%);
+  width: min(480px, 100%);
   max-height: min(85vh, 900px);
-  background: #212121;
-  color: #f1f1f1;
+  background: var(--wl-surface);
+  color: var(--wl-text);
   border-radius: 12px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--wl-shadow);
   font-family: 'Roboto', 'Arial', sans-serif;
   overflow: hidden;
 }
@@ -92,24 +122,28 @@ html[dark] .wl-trigger.wl-trigger-inline:hover { background: rgba(255, 255, 255,
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 20px 24px 12px;
-  border-bottom: 1px solid #3f3f3f;
+  padding: 16px 20px;
 }
-.wl-modal-title { flex: 1; margin: 0; font-size: 1.8rem; font-weight: 500; }
-.wl-modal-status { color: #aaa; font-size: 1.3rem; }
+.wl-modal-title { flex: 1; margin: 0; font-size: 1.6rem; font-weight: 500; }
+.wl-modal-status { color: var(--wl-text-2); font-size: 1.3rem; }
 
 /* No top padding: a sticky heading pins to the scrollport edge, and any
-   padding there shows as a strip that scrolled items peek through. */
-.wl-modal-body { overflow-y: auto; padding: 0 24px 8px; }
-/* Anything that is not a sticky heading still needs breathing room below the
-   header border (YouTube's page CSS zeroes <p> margins). */
-.wl-modal-body > :first-child:not(.wl-group-heading) { margin-top: 12px; }
+   padding there shows as a strip that scrolled items peek through. Rows carry
+   their own horizontal padding so hover fills reach the panel edge. */
+.wl-modal-body {
+  overflow-y: auto;
+  padding: 0 0 8px;
+  border-top: 1px solid var(--wl-layer-2);
+}
+.wl-modal-body > :first-child:not(.wl-group-heading) { margin-top: 8px; }
+.wl-modal-body > p { margin: 8px 20px; color: var(--wl-text-2); font-size: 1.4rem; }
 .wl-modal-footer {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
-  padding: 16px 24px 20px;
-  border-top: 1px solid #3f3f3f;
+  padding: 12px 20px;
+  border-top: 1px solid var(--wl-layer-2);
 }
 
 .wl-modal-btn {
@@ -118,178 +152,189 @@ html[dark] .wl-trigger.wl-trigger-inline:hover { background: rgba(255, 255, 255,
   justify-content: center;
   gap: 6px;
   height: 36px;
-  padding: 0 20px;
+  padding: 0 16px;
   border: none;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.1);
-  color: #f1f1f1;
+  background: var(--wl-layer);
+  color: var(--wl-text);
   font-family: inherit;
   font-size: 1.4rem;
   font-weight: 500;
   cursor: pointer;
 }
-.wl-modal-btn:hover { background: rgba(255, 255, 255, 0.2); }
-.wl-modal-btn.wl-primary { background: #f1f1f1; color: #0f0f0f; }
-.wl-modal-btn.wl-primary:hover { background: #d9d9d9; }
+.wl-modal-btn:hover { background: var(--wl-layer-2); }
+.wl-modal-btn:disabled { cursor: default; color: var(--wl-text-2); }
+.wl-modal-btn.wl-primary { background: var(--wl-inverse-bg); color: var(--wl-inverse-text); }
+.wl-modal-btn.wl-primary:hover { opacity: 0.9; }
 
-.wl-mode-choice { display: flex; flex-direction: column; gap: 12px; padding: 16px 0; }
+.wl-mode-choice { display: flex; flex-direction: column; }
 .wl-mode-btn {
   display: block;
   width: 100%;
-  padding: 14px 16px;
-  border: 1px solid #3f3f3f;
-  border-radius: 8px;
+  min-height: 56px;
+  padding: 8px 20px;
+  border: none;
   background: transparent;
-  color: #f1f1f1;
+  color: var(--wl-text);
   font-family: inherit;
-  font-size: 1.5rem;
+  font-size: 1.4rem;
+  line-height: 2rem;
   text-align: left;
   cursor: pointer;
 }
-.wl-mode-btn:hover { background: rgba(255, 255, 255, 0.08); }
-.wl-mode-btn small { display: block; margin-top: 4px; color: #aaa; font-size: 1.2rem; }
+.wl-mode-btn + .wl-mode-btn { border-top: 1px solid var(--wl-layer-2); }
+.wl-mode-btn:hover { background: var(--wl-layer); }
+.wl-mode-btn small { display: block; color: var(--wl-text-2); font-size: 1.2rem; line-height: 1.6rem; }
 
-/* Sort-option selects above the preview list. Same fill and text as
-   .wl-modal-btn so the row reads as controls, not content. */
-.wl-sort-toggle {
+/* Menu rows: the sort-options disclosure, each option, and its choices. */
+.wl-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 12px;
   width: 100%;
-  margin: 4px 0 0;
-  padding: 8px 0;
+  min-height: 40px;
+  margin: 0;
+  padding: 0 20px;
   border: none;
-  background: none;
-  color: #aaa;
+  background: transparent;
+  color: var(--wl-text);
   font-family: inherit;
-  font-size: 1.3rem;
-  font-weight: 500;
+  font-size: 1.4rem;
   text-align: left;
   cursor: pointer;
 }
-.wl-sort-toggle:hover { color: #f1f1f1; }
-.wl-sort-toggle svg { width: 18px; height: 18px; transition: transform 120ms ease; }
-.wl-sort-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
-.wl-sort-options {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 0 0 12px;
-  border-bottom: 1px solid #3f3f3f;
-}
+.wl-row:hover { background: var(--wl-layer); }
+.wl-row-label { flex: 1; }
+.wl-row-value { color: var(--wl-text-2); white-space: nowrap; }
+.wl-chevron { display: inline-flex; flex-shrink: 0; }
+.wl-chevron svg { width: 20px; height: 20px; transition: transform 150ms ease-out; }
+.wl-row[aria-expanded="true"] .wl-chevron svg { transform: rotate(180deg); }
+
+.wl-sort-options { border-bottom: 1px solid var(--wl-layer-2); }
 .wl-sort-options[hidden] { display: none; }
-/* One option per row: a fixed-width caption, then the control right beside it. */
-.wl-sort-field,
-.wl-sort-check {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 12px;
-  min-height: 32px;
+.wl-sort-options > .wl-row { padding-left: 40px; }
+.wl-option-list[hidden] { display: none; }
+/* The choices sit one level below the option row they belong to. */
+.wl-option-list .wl-option { padding-left: 60px; }
+/* The native radio is kept for keyboard and screen readers but drawn as
+   YouTube draws a selection: a check in the icon slot of the chosen row. */
+.wl-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
 }
-.wl-sort-label,
-.wl-sort-check > span {
-  flex: 0 0 130px;
-  color: #aaa;
-  font-size: 1.3rem;
-}
-.wl-sort-check {
-  flex-direction: row-reverse;
-  justify-content: flex-end;
-  color: #aaa;
-  font-size: 1.3rem;
-  cursor: pointer;
-}
-.wl-sort-check input { margin: 0; accent-color: #f1f1f1; cursor: pointer; }
-.wl-sort-select {
-  height: 32px;
-  padding: 0 34px 0 12px;
-  border: none;
-  border-radius: 16px;
-  background-color: rgba(255, 255, 255, 0.1);
-  color: #f1f1f1;
-  font-family: inherit;
-  font-size: 1.3rem;
-  cursor: pointer;
-  /* The native arrow ignores padding and sits flush against the rounded edge,
-     so it is replaced with our own chevron placed by background-position. */
+.wl-option-check { display: inline-flex; flex-shrink: 0; width: 20px; height: 20px; }
+.wl-option-check svg { width: 20px; height: 20px; color: var(--wl-text); visibility: hidden; }
+.wl-option input:checked + .wl-option-check svg { visibility: visible; }
+
+.wl-switch {
   appearance: none;
   -webkit-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M1 3l4 4 4-4' fill='none' stroke='%23f1f1f1' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border: none;
+  border-radius: 10px;
+  background: var(--wl-layer-2);
+  cursor: pointer;
 }
-.wl-sort-select:hover { background-color: rgba(255, 255, 255, 0.2); }
-/* The dropdown list inherits the page's colour scheme, so it needs the dark
-   surface set explicitly or light-theme YouTube shows white text on white. */
-.wl-sort-select option { background: #212121; color: #f1f1f1; }
+.wl-switch::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--wl-text);
+  transition: transform 150ms ease-out;
+}
+.wl-switch:checked { background: var(--wl-accent); }
+.wl-switch:checked::before { transform: translateX(16px); }
 
 .wl-group-heading {
   position: sticky;
   top: 0;
-  background: #212121;
-  padding: 14px 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--wl-surface);
+  padding: 12px 20px;
   margin: 0;
-  font-size: 1.3rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: #69b3ff;
+  font-size: 1.4rem;
+  font-weight: 500;
+  color: var(--wl-text-2);
 }
-.wl-group-heading.wl-in-progress { color: #ff8a80; }
+.wl-group-heading.wl-in-progress { color: var(--wl-in-progress); }
+.wl-group-heading .wl-play-icon { width: 12px; height: 12px; flex-shrink: 0; }
 .wl-group-heading .wl-group-meta {
-  margin-left: 10px;
-  color: #aaa;
+  color: var(--wl-text-2);
+  opacity: 0.7;
   font-size: 1.2rem;
   font-weight: 400;
-  text-transform: none;
-  letter-spacing: 0;
 }
 
 .wl-modal-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 6px 0 6px 12px;
+  min-height: 40px;
+  padding: 0 20px;
   font-size: 1.4rem;
   line-height: 2rem;
+  color: var(--wl-text);
 }
+.wl-modal-item:hover { background: var(--wl-layer); }
 .wl-item-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wl-modal-item.wl-unavailable .wl-item-title { color: #909090; font-style: italic; }
-.wl-item-meta { color: #aaa; font-size: 1.3rem; white-space: nowrap; }
+.wl-modal-item.wl-unavailable .wl-item-title { color: var(--wl-text-2); font-style: italic; }
+.wl-item-meta { color: var(--wl-text-2); font-size: 1.3rem; white-space: nowrap; }
 
 .wl-unwatch-btn {
   flex-shrink: 0;
-  padding: 2px 10px;
-  border: 1px solid #5f5f5f;
-  border-radius: 12px;
-  background: transparent;
-  color: #f1f1f1;
+  height: 28px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 14px;
+  background: var(--wl-layer);
+  color: var(--wl-text);
+  font-family: inherit;
   font-size: 1.2rem;
+  font-weight: 500;
   cursor: pointer;
 }
-.wl-unwatch-btn:hover { background: rgba(255, 255, 255, 0.12); }
-.wl-unwatch-btn[aria-pressed="true"] {
-  background: #f1f1f1; color: #0f0f0f; border-color: #f1f1f1;
-}
+.wl-unwatch-btn:hover { background: var(--wl-layer-2); }
+.wl-unwatch-btn[aria-pressed="true"] { background: var(--wl-inverse-bg); color: var(--wl-inverse-text); }
 
-/* Visible focus for keyboard users — required for WCAG 2.1 AA. */
-.wl-modal :focus-visible, .wl-trigger:focus-visible {
+/* Visible focus for keyboard users — required for WCAG 2.1 AA. The radio and
+   switch inputs sit inside a label row, so the row shows the ring for them. */
+.wl-modal :focus-visible,
+.wl-modal label.wl-row:focus-within {
+  outline: 2px solid var(--wl-accent);
+  outline-offset: 2px;
+}
+.wl-modal label.wl-row:focus-within { outline-offset: -2px; }
+.wl-modal label.wl-row input:focus-visible { outline: none; }
+.wl-trigger:focus-visible {
   outline: 2px solid #69b3ff;
   outline-offset: 2px;
 }
 
-.wl-modal-error { margin: 8px 0; color: #ff8a80; font-size: 1.4rem; }
+.wl-modal-error { margin: 8px 20px; color: var(--wl-in-progress); font-size: 1.4rem; }
 
 .wl-progress-bar {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--wl-layer);
   border-radius: 4px;
   height: 4px;
   overflow: hidden;
-  margin: 16px 0;
+  margin: 8px 20px 16px;
 }
 .wl-progress-fill {
-  background: #f1f1f1;
+  background: var(--wl-text);
   height: 100%;
   width: 30%;
   border-radius: 4px;
@@ -298,4 +343,9 @@ html[dark] .wl-trigger.wl-trigger-inline:hover { background: rgba(255, 255, 255,
 @keyframes wl-indeterminate {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(400%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wl-chevron svg,
+  .wl-switch::before { transition: none; }
 }

@@ -382,6 +382,21 @@ describe('WLHeadings.inject', () => {
     assert.equal(heading.children.length, 2, 'a group map stored without remaining gets no total');
   });
 
+  it('draws the in-progress heading with a play icon and no typed glyph in its label', () => {
+    const { document, headingIn } = fakePlaylist(['a']);
+    const headings = loadGlobal('content/headings.js', 'WLHeadings', {
+      document, SELECTORS, MutationObserver: class { observe() {} disconnect() {} },
+    });
+
+    headings.inject([{ videoId: 'a', name: headings.IN_PROGRESS_LABEL, count: 1 }]);
+
+    const heading = headingIn(0);
+    assert.equal(heading.className, 'wl-playlist-heading wl-in-progress');
+    assert.match(heading.innerHTML, /^<svg class="wl-play-icon"/);
+    assert.equal(heading.children[0].textContent, 'In progress');
+    assert.equal(heading.getAttribute('data-wl-heading'), 'In progress');
+  });
+
   it('appends the unwatched total after the count', () => {
     const { document, headingIn } = fakePlaylist(['a']);
     const headings = loadGlobal('content/headings.js', 'WLHeadings', {

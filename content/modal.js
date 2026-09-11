@@ -3,7 +3,12 @@
 // emits callbacks. Deliberately not anchored to any YouTube element.
 
 const WLModal = {
-  IN_PROGRESS_LABEL: '▶ In Progress',
+  IN_PROGRESS_LABEL: 'In progress',
+  // Drawn, not typed: a glyph in the label would also end up in the stored
+  // group map and in every string comparison against the label.
+  PLAY_ICON: '<svg class="wl-play-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
+  CHEVRON_ICON: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.707 8.793a1 1 0 00-1.414 0L12 14.086 6.707 8.793a1 1 0 10-1.414 1.414L12 16.914l6.707-6.707a1 1 0 000-1.414Z"/></svg>',
+  CHECK_ICON: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>',
 
   // Mirror of lib/sort.js SORT_CHOICES — content scripts cannot import lib/.
   // tests/modal.test.js pins the two copies together.
@@ -30,12 +35,15 @@ const WLModal = {
     inProgress: 'Group in progress',
     groupOrder: 'Group order',
   },
-  // inProgress has exactly two values, so it renders as a checkbox: checked is
-  // 'top', unchecked is 'within'.
+  // inProgress has exactly two values, so it renders as a switch: on is 'top',
+  // off is 'within'.
   SORT_CHECKBOX_VALUES: { inProgress: { on: 'top', off: 'within' } },
   // Collapsed by default; remembered for the life of the page so a re-render
   // after a change does not fold the panel the user just opened.
   _sortOptionsOpen: false,
+  // The option whose choice list is unfolded, or null. Choosing collapses it,
+  // so a re-render after the change lands back on the option rows.
+  _openSortKey: null,
 
   _root: null,
   _lastFocused: null,
@@ -343,9 +351,13 @@ const WLModal = {
     this._cancellable = true;
 
     // A re-render triggered by one of the controls must not steal focus from it:
-    // arrow keys on a focused <select> fire `change` per step in Firefox, and
-    // jumping to Apply after each would strand a keyboard user.
-    const focusedControl = document.activeElement?.getAttribute?.('data-wl-sort') ?? null;
+    // arrow keys on a focused radio fire `change` per step, and jumping to Apply
+    // after each would strand a keyboard user. A radio's own list has just
+    // collapsed by then, so focus goes to the row that opens it.
+    const active = document.activeElement;
+    const focusedControl = active?.getAttribute?.('data-wl-sort')
+      ?? active?.getAttribute?.('data-wl-sort-choice')
+      ?? null;
 
     this.setStatus('');
     body.textContent = '';
@@ -353,12 +365,9 @@ const WLModal = {
 
     if (sortOptions) {
       const row = this._renderSortOptions(sortOptions);
-      const toggle = document.createElement('button');
-      toggle.type = 'button';
-      toggle.className = 'wl-sort-toggle';
-      toggle.setAttribute('data-wl-sort', 'toggle');
+      const toggle = this._renderDisclosureRow('toggle', 'Sort options');
+      toggle.className += ' wl-row-disclosure';
       toggle.setAttribute('aria-expanded', String(this._sortOptionsOpen));
-      toggle.innerHTML = `<span>Sort options</span><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.707 8.793a1 1 0 00-1.414 0L12 14.086 6.707 8.793a1 1 0 10-1.414 1.414L12 16.914l6.707-6.707a1 1 0 000-1.414Z"/></svg>`;
       row.hidden = !this._sortOptionsOpen;
       toggle.addEventListener('click', () => {
         this._sortOptionsOpen = !this._sortOptionsOpen;
@@ -371,11 +380,13 @@ const WLModal = {
     for (const group of this.toGroups(sortOrder)) {
       if (group.name !== null) {
         const heading = document.createElement('h3');
-        heading.className = group.name === this.IN_PROGRESS_LABEL
-          ? 'wl-group-heading wl-in-progress'
-          : 'wl-group-heading';
-        heading.textContent = group.name;
-        heading.appendChild(this._renderGroupMeta(group.videos));
+        const inProgress = group.name === this.IN_PROGRESS_LABEL;
+        heading.className = inProgress ? 'wl-group-heading wl-in-progress' : 'wl-group-heading';
+        if (inProgress) heading.innerHTML = this.PLAY_ICON;
+        const label = document.createElement('span');
+        label.className = 'wl-group-label';
+        label.textContent = group.name;
+        heading.append(label, this._renderGroupMeta(group.videos));
         body.appendChild(heading);
       }
       for (const video of group.videos) body.appendChild(this._renderItem(video));
@@ -412,66 +423,131 @@ const WLModal = {
     return meta;
   },
 
-  _renderSortOptions(sortOptions) {
-    const row = document.createElement('div');
-    row.className = 'wl-sort-options';
-    const controls = [];
+  /** A 40px menu row: label, optional current-value text, chevron. */
+  _renderDisclosureRow(key, label, value = null) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'wl-row';
+    row.setAttribute('data-wl-sort', key);
+    const caption = document.createElement('span');
+    caption.className = 'wl-row-label';
+    caption.textContent = label;
+    row.appendChild(caption);
+    if (value !== null) {
+      const current = document.createElement('span');
+      current.className = 'wl-row-value';
+      current.textContent = value;
+      row.appendChild(current);
+    }
+    const chevron = document.createElement('span');
+    chevron.className = 'wl-chevron';
+    chevron.innerHTML = this.CHEVRON_ICON;
+    row.appendChild(chevron);
+    return row;
+  },
 
-    const valueOf = (control) => {
-      const key = control.getAttribute('data-wl-sort');
-      const toggle = this.SORT_CHECKBOX_VALUES[key];
-      if (toggle) return control.checked ? toggle.on : toggle.off;
-      return control.value || sortOptions[key];
-    };
+  _renderSortOptions(sortOptions) {
+    const panel = document.createElement('div');
+    panel.className = 'wl-sort-options';
+    const radios = {};
+    let switchInput = null;
+
     // Read every control live: two quick changes before the first re-sort
     // returns must not revert each other through a render-time snapshot.
     const emit = () => {
       const current = {};
-      for (const control of controls) current[control.getAttribute('data-wl-sort')] = valueOf(control);
+      for (const key of Object.keys(this.SORT_CHOICES)) {
+        const toggle = this.SORT_CHECKBOX_VALUES[key];
+        if (toggle) {
+          current[key] = switchInput.checked ? toggle.on : toggle.off;
+          continue;
+        }
+        const checked = radios[key].find(r => r.checked);
+        current[key] = checked ? checked.value : sortOptions[key];
+      }
       this._handlers.onSortOptionsChange?.(current);
     };
 
-    for (const [key, choices] of Object.entries(this.SORT_CHOICES)) {
-      const field = document.createElement('label');
+    // Choice rows first, switches last, whatever order SORT_CHOICES (pinned to
+    // lib/sort.js) happens to list them in.
+    const keys = Object.keys(this.SORT_CHOICES)
+      .sort((a, b) => (a in this.SORT_CHECKBOX_VALUES) - (b in this.SORT_CHECKBOX_VALUES));
+    for (const key of keys) {
+      const choices = this.SORT_CHOICES[key];
       const toggle = this.SORT_CHECKBOX_VALUES[key];
 
       if (toggle) {
-        field.className = 'wl-sort-check';
-        const box = document.createElement('input');
-        box.type = 'checkbox';
-        box.setAttribute('data-wl-sort', key);
-        box.checked = sortOptions[key] === toggle.on;
-        box.addEventListener('change', emit);
-        controls.push(box);
+        const field = document.createElement('label');
+        field.className = 'wl-row wl-switch-row';
         const caption = document.createElement('span');
+        caption.className = 'wl-row-label';
         caption.textContent = this.SORT_FIELD_LABELS[key];
-        field.append(box, caption);
-        row.appendChild(field);
+        switchInput = document.createElement('input');
+        switchInput.type = 'checkbox';
+        switchInput.className = 'wl-switch';
+        switchInput.setAttribute('role', 'switch');
+        switchInput.setAttribute('data-wl-sort', key);
+        switchInput.checked = sortOptions[key] === toggle.on;
+        switchInput.addEventListener('change', emit);
+        field.append(caption, switchInput);
+        panel.appendChild(field);
         continue;
       }
 
-      field.className = 'wl-sort-field';
-      const caption = document.createElement('span');
-      caption.className = 'wl-sort-label';
-      caption.textContent = this.SORT_FIELD_LABELS[key];
+      const current = choices.find(c => c.value === sortOptions[key]) ?? choices[0];
+      const row = this._renderDisclosureRow(key, this.SORT_FIELD_LABELS[key], current.label);
+      const open = this._openSortKey === key;
+      row.setAttribute('aria-expanded', String(open));
 
-      const select = document.createElement('select');
-      select.className = 'wl-sort-select';
-      select.setAttribute('data-wl-sort', key);
+      const list = document.createElement('div');
+      list.className = 'wl-option-list';
+      list.setAttribute('role', 'radiogroup');
+      list.setAttribute('aria-label', this.SORT_FIELD_LABELS[key]);
+      list.hidden = !open;
+
+      radios[key] = [];
       for (const { value, label } of choices) {
-        const option = document.createElement('option');
-        option.value = value;
-        option.textContent = label;
-        option.selected = value === sortOptions[key];
-        select.appendChild(option);
+        const option = document.createElement('label');
+        option.className = 'wl-row wl-option';
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = `wl-${key}`;
+        radio.value = value;
+        radio.setAttribute('data-wl-sort-choice', key);
+        radio.checked = value === sortOptions[key];
+        radio.addEventListener('change', () => {
+          this._openSortKey = null;
+          list.hidden = true;
+          row.setAttribute('aria-expanded', 'false');
+          emit();
+        });
+        radios[key].push(radio);
+        const check = document.createElement('span');
+        check.className = 'wl-option-check';
+        check.innerHTML = this.CHECK_ICON;
+        const caption = document.createElement('span');
+        caption.className = 'wl-row-label';
+        caption.textContent = label;
+        option.append(radio, check, caption);
+        list.appendChild(option);
       }
-      select.addEventListener('change', emit);
-      controls.push(select);
 
-      field.append(caption, select);
-      row.appendChild(field);
+      row.addEventListener('click', () => {
+        const nowOpen = this._openSortKey !== key;
+        this._openSortKey = nowOpen ? key : null;
+        list.hidden = !nowOpen;
+        row.setAttribute('aria-expanded', String(nowOpen));
+        // Only one list unfolds at a time, like a menu.
+        for (const sibling of panel.children) {
+          if (sibling === row || sibling === list) continue;
+          if (sibling.className === 'wl-option-list') sibling.hidden = true;
+          else if (sibling.getAttribute('aria-expanded') !== null) sibling.setAttribute('aria-expanded', 'false');
+        }
+      });
+
+      panel.append(row, list);
     }
-    return row;
+    return panel;
   },
 
   _renderItem(video) {

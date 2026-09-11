@@ -176,168 +176,238 @@ describe('WLModal.showModes', () => {
   });
 });
 
-/** The control (select or checkbox) carrying data-wl-sort inside a rendered field. */
-const controlIn = (field) => field.children.find(el => el.getAttribute('data-wl-sort') !== null);
+/** Depth-first walk of a fake subtree. */
+const walk = (node, out = []) => {
+  for (const child of node.children ?? []) { out.push(child); walk(child, out); }
+  return out;
+};
+/** Just enough of querySelector for `[data-wl-sort="k"]` and `[data-wl-sort-choice="k"]`. */
+const selectorFor = (root) => (selector) => {
+  const [, attr, value] = /\[([\w-]+)="([\w-]+)"\]/.exec(selector);
+  return walk(root).find(el => el.getAttribute(attr) === value) ?? null;
+};
 
-function previewWith({ sortOrder = [], sortOptions = null, handlers = {}, activeSortKey = null } = {}) {
+/**
+ * Renders a preview and hands back the sort-option controls by their role:
+ * `rows` are the disclosure buttons (data-wl-sort), `lists` the radio groups
+ * they unfold, `radios[key]` the inputs (data-wl-sort-choice), `sw` the switch.
+ */
+function previewWith({ sortOrder = [], sortOptions = null, handlers = {}, activeSortKey = null, activeChoiceKey = null } = {}) {
   const { make, document } = fakeUi();
-  const activeElement = activeSortKey
-    ? { getAttribute: (k) => (k === 'data-wl-sort' ? activeSortKey : null) }
+  const activeElement = activeSortKey || activeChoiceKey
+    ? { getAttribute: (k) => (k === 'data-wl-sort' ? activeSortKey : k === 'data-wl-sort-choice' ? activeChoiceKey : null) }
     : undefined;
   document.activeElement = activeElement;
   const modal = loadGlobal('content/modal.js', 'WLModal', { document, WLHeadings: realHeadings() });
   const body = make('div');
-  body.querySelector = (selector) => {
-    const match = /\[data-wl-sort="(\w+)"\]/.exec(selector);
-    const row = body.children.find(el => el.className === 'wl-sort-options');
-    return row?.children.map(controlIn).find(c => c.getAttribute('data-wl-sort') === match?.[1]) ?? null;
-  };
+  body.querySelector = selectorFor(body);
   const footer = make('div');
   modal._body = () => body;
   modal._footer = () => footer;
   modal._handlers = handlers;
   modal.showPreview(sortOrder, sortOptions);
-  const row = body.children.find(el => el.className === 'wl-sort-options') ?? null;
-  const controls = row ? row.children.map(controlIn) : [];
-  const selects = controls.filter(c => c.tagName === 'select');
-  const checkbox = controls.find(c => c.tagName === 'input') ?? null;
-  return { modal, body, footer, row, controls, selects, checkbox };
+  const panel = body.children.find(el => el.className === 'wl-sort-options') ?? null;
+  const all = panel ? walk(panel) : [];
+  const rows = all.filter(el => el.tagName === 'button');
+  const lists = all.filter(el => el.className === 'wl-option-list');
+  const radios = {};
+  for (const el of all.filter(el => el.type === 'radio')) {
+    (radios[el.getAttribute('data-wl-sort-choice')] ??= []).push(el);
+  }
+  const sw = all.find(el => el.type === 'checkbox') ?? null;
+  const rowFor = (key) => rows.find(r => r.getAttribute('data-wl-sort') === key);
+  const listFor = (key) => lists.find(l => l.getAttribute('aria-label') === modal.SORT_FIELD_LABELS[key]);
+  return { modal, body, footer, panel, rows, lists, radios, sw, rowFor, listFor, toggle: body.children[0] };
 }
-
-describe('WLModal.showPreview group headings', () => {
-  it('shows the count and unwatched total beside each group name', () => {
-    const { body } = previewWith({ sortOrder: [
-      video({ id: 'a', cluster: 'Music', duration: 600 }),
-      video({ id: 'b', cluster: 'Music', duration: 1000, percentWatched: 75, inProgress: true }),
-      video({ id: 'c', cluster: 'Tech & AI', duration: 30 }),
-    ] });
-    const headings = body.children.filter(el => el.className.startsWith('wl-group-heading'));
-    assert.deepEqual(headings.map(h => h.textContent), ['Music', 'Tech & AI']);
-    assert.deepEqual(headings.map(h => h.children[0].className), ['wl-group-meta', 'wl-group-meta']);
-    assert.deepEqual(headings.map(h => h.children[0].textContent), ['2 videos · 14m', '1 video · 1m']);
-  });
-
-  it('shows only the count when no video has a duration', () => {
-    const { body } = previewWith({ sortOrder: [{ id: 'a', title: 'T', cluster: 'Music' }] });
-    assert.equal(body.children[0].children[0].textContent, '1 video');
-  });
-});
 
 describe('WLModal.showPreview sort options', () => {
   const options = { withinGroup: 'title', inProgress: 'within', groupOrder: 'alpha' };
+  const labelOf = (row) => row.children.find(c => c.className === 'wl-row-label').textContent;
+  const valueOf = (row) => row.children.find(c => c.className === 'wl-row-value')?.textContent ?? null;
 
   it('renders no options row when none are given (duration mode)', () => {
-    const { row, body } = previewWith({ sortOrder: [video({ id: 'a' })] });
-    assert.equal(row, null);
+    const { panel, body } = previewWith({ sortOrder: [video({ id: 'a' })] });
+    assert.equal(panel, null);
     assert.equal(body.children[0].className, 'wl-group-heading');
   });
 
-  it('renders one labelled control per option, above the list, with the current value selected', () => {
-    const { body, row, controls, selects, checkbox } = previewWith({ sortOrder: [video({ id: 'a' })], sortOptions: options });
-    assert.equal(body.children[0].className, 'wl-sort-toggle', 'a show/hide toggle comes first');
-    assert.equal(body.children[0].getAttribute('aria-expanded'), 'false', 'collapsed by default');
-    assert.equal(body.children[1], row, 'the row comes before the first heading');
-    assert.equal(row.hidden, true);
-    body.children[0]._listeners.click();
-    assert.equal(row.hidden, false);
-    assert.equal(body.children[0].getAttribute('aria-expanded'), 'true');
-    assert.deepEqual(row.children.map(f => f.tagName), ['label', 'label', 'label']);
-    assert.deepEqual(controls.map(c => c.getAttribute('data-wl-sort')), ['withinGroup', 'inProgress', 'groupOrder']);
-    assert.deepEqual(selects.map(s => s.getAttribute('data-wl-sort')), ['withinGroup', 'groupOrder']);
-    for (const select of selects) {
-      const key = select.getAttribute('data-wl-sort');
-      assert.deepEqual(select.children.map(o => o.value), SORT_CHOICES[key].map(c => c.value));
-      assert.deepEqual(select.children.filter(o => o.selected).map(o => o.value), [options[key]]);
+  it('renders a collapsed "Sort options" disclosure row above the list that unfolds the panel', () => {
+    const { body, panel, toggle } = previewWith({ sortOrder: [video({ id: 'a' })], sortOptions: options });
+    assert.equal(toggle.tagName, 'button');
+    assert.equal(toggle.className, 'wl-row wl-row-disclosure');
+    assert.equal(toggle.getAttribute('data-wl-sort'), 'toggle');
+    assert.equal(labelOf(toggle), 'Sort options');
+    assert.equal(toggle.getAttribute('aria-expanded'), 'false', 'collapsed by default');
+    assert.equal(body.children[1], panel, 'the panel comes before the first heading');
+    assert.equal(panel.hidden, true);
+    toggle._listeners.click();
+    assert.equal(panel.hidden, false);
+    assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+  });
+
+  it('renders one row per option: two disclosure rows with their current choice, then the switch', () => {
+    const { panel, rows, radios, sw, rowFor } = previewWith({ sortOptions: options });
+    assert.deepEqual(panel.children.map(el => el.className), [
+      'wl-row', 'wl-option-list', 'wl-row', 'wl-option-list', 'wl-row wl-switch-row',
+    ]);
+    assert.deepEqual(rows.map(r => r.getAttribute('data-wl-sort')), ['withinGroup', 'groupOrder']);
+    assert.deepEqual(rows.map(labelOf), ['Within a group', 'Group order']);
+    assert.deepEqual(rows.map(valueOf), ['Title A–Z', 'Alphabetical']);
+    assert.deepEqual(rows.map(r => r.getAttribute('aria-expanded')), ['false', 'false']);
+    for (const key of ['withinGroup', 'groupOrder']) {
+      assert.deepEqual(radios[key].map(r => r.value), SORT_CHOICES[key].map(c => c.value));
+      assert.deepEqual(radios[key].map(r => r.name), radios[key].map(() => `wl-${key}`), 'one radio group per option');
+      assert.deepEqual(radios[key].filter(r => r.checked).map(r => r.value), [options[key]]);
+      assert.ok(rowFor(key).children.some(c => c.className === 'wl-chevron'));
     }
-    assert.equal(checkbox.type, 'checkbox');
-    assert.equal(checkbox.getAttribute('data-wl-sort'), 'inProgress');
-    assert.equal(checkbox.checked, false, "'within' renders unchecked");
+    assert.equal(sw.type, 'checkbox');
+    assert.equal(sw.getAttribute('role'), 'switch');
+    assert.equal(sw.getAttribute('data-wl-sort'), 'inProgress');
+    assert.equal(sw.checked, false, "'within' renders off");
+    assert.equal(labelOf(panel.children[4]), 'Group in progress');
   });
 
-  it('renders the checkbox checked for inProgress top, inside a wl-sort-check label', () => {
-    const { row, checkbox } = previewWith({ sortOptions: { ...options, inProgress: 'top' } });
-    assert.equal(checkbox.checked, true);
-    const field = row.children.find(f => f.className === 'wl-sort-check');
-    assert.equal(field.children[0], checkbox);
-    assert.equal(field.children[1].textContent, 'Group in progress');
+  it('each choice row holds the radio, a check-icon slot and its label', () => {
+    const { listFor } = previewWith({ sortOptions: options });
+    const option = listFor('groupOrder').children[0];
+    assert.equal(option.tagName, 'label');
+    assert.equal(option.className, 'wl-row wl-option');
+    assert.deepEqual(option.children.map(c => c.className), ['', 'wl-option-check', 'wl-row-label']);
+    assert.match(option.children[1].innerHTML, /^<svg/);
+    assert.equal(option.children[2].textContent, 'My category order');
   });
 
-  it('toggling the checkbox emits top when checked and within when unchecked', () => {
+  it('renders the switch on for inProgress top', () => {
+    const { sw } = previewWith({ sortOptions: { ...options, inProgress: 'top' } });
+    assert.equal(sw.checked, true);
+  });
+
+  it('flipping the switch emits top when on and within when off', () => {
     const emitted = [];
-    const { checkbox } = previewWith({
+    const { sw } = previewWith({
       sortOptions: options,
       handlers: { onSortOptionsChange: (next) => emitted.push(next) },
     });
-    checkbox.checked = true;
-    checkbox._listeners.change();
-    checkbox.checked = false;
-    checkbox._listeners.change();
+    sw.checked = true;
+    sw._listeners.change();
+    sw.checked = false;
+    sw._listeners.change();
     assert.deepEqual(emitted.map(o => ({ ...o })), [
       { withinGroup: 'title', inProgress: 'top', groupOrder: 'alpha' },
       { withinGroup: 'title', inProgress: 'within', groupOrder: 'alpha' },
     ]);
   });
 
-  it('a change emits the full option set with only that key replaced', () => {
+  it('clicking an option row unfolds only its list and remembers it in _openSortKey', () => {
+    const { modal, rowFor, listFor } = previewWith({ sortOptions: options });
+    assert.equal(listFor('withinGroup').hidden, true);
+    rowFor('withinGroup')._listeners.click();
+    assert.equal(modal._openSortKey, 'withinGroup');
+    assert.equal(listFor('withinGroup').hidden, false);
+    assert.equal(rowFor('withinGroup').getAttribute('aria-expanded'), 'true');
+    rowFor('groupOrder')._listeners.click();
+    assert.equal(modal._openSortKey, 'groupOrder');
+    assert.equal(listFor('withinGroup').hidden, true, 'one list at a time, like a menu');
+    assert.equal(rowFor('withinGroup').getAttribute('aria-expanded'), 'false');
+    assert.equal(listFor('groupOrder').hidden, false);
+    rowFor('groupOrder')._listeners.click();
+    assert.equal(modal._openSortKey, null);
+    assert.equal(listFor('groupOrder').hidden, true);
+  });
+
+  it('a re-render keeps the list the user opened unfolded', () => {
+    const { make, document } = fakeUi();
+    const modal = loadGlobal('content/modal.js', 'WLModal', { document, WLHeadings: realHeadings() });
+    const body = make('div');
+    body.querySelector = selectorFor(body);
+    modal._body = () => body;
+    modal._footer = () => make('div');
+    modal._handlers = {};
+    modal._sortOptionsOpen = true;
+    modal._openSortKey = 'groupOrder';
+    modal.showPreview([], options);
+    const panel = body.children[1];
+    assert.equal(panel.hidden, false);
+    assert.equal(panel.children[2].getAttribute('aria-expanded'), 'true');
+    assert.equal(panel.children[3].hidden, false);
+    assert.equal(panel.children[1].hidden, true);
+  });
+
+  it('choosing a radio emits the full option set with only that key replaced, and folds its list', () => {
     const emitted = [];
-    const { selects } = previewWith({
+    const { modal, radios, rowFor, listFor } = previewWith({
       sortOptions: options,
       handlers: { onSortOptionsChange: (next) => emitted.push(next) },
     });
-    const groupOrder = selects.find(s => s.getAttribute('data-wl-sort') === 'groupOrder');
-    groupOrder.value = 'size';
-    groupOrder._listeners.change();
+    rowFor('groupOrder')._listeners.click();
+    const size = radios.groupOrder.find(r => r.value === 'size');
+    for (const r of radios.groupOrder) r.checked = r === size;
+    size._listeners.change();
     assert.deepEqual(emitted.map(o => ({ ...o })), [{ withinGroup: 'title', inProgress: 'within', groupOrder: 'size' }]);
+    assert.equal(modal._openSortKey, null);
+    assert.equal(listFor('groupOrder').hidden, true);
+    assert.equal(rowFor('groupOrder').getAttribute('aria-expanded'), 'false');
   });
 
   it('a second change carries the first one, not a render-time snapshot', () => {
     // Regression: two quick changes before the first re-sort returned reverted
     // each other because the handler closed over the options at render time.
     const emitted = [];
-    const { selects } = previewWith({
+    const { radios } = previewWith({
       sortOptions: options,
       handlers: { onSortOptionsChange: (next) => emitted.push(next) },
     });
-    const byKey = (k) => selects.find(s => s.getAttribute('data-wl-sort') === k);
-    byKey('withinGroup').value = 'duration-desc';
-    byKey('withinGroup')._listeners.change();
-    byKey('groupOrder').value = 'alpha';
-    byKey('groupOrder')._listeners.change();
+    const pick = (key, value) => {
+      for (const r of radios[key]) r.checked = r.value === value;
+      radios[key].find(r => r.value === value)._listeners.change();
+    };
+    pick('withinGroup', 'duration-desc');
+    pick('groupOrder', 'alpha');
     assert.deepEqual({ ...emitted[1] }, { withinGroup: 'duration-desc', inProgress: 'within', groupOrder: 'alpha' });
   });
 
   it('does not throw on change when no handler is registered', () => {
-    const { selects } = previewWith({ sortOptions: options });
-    selects[0].value = 'playlist';
-    assert.doesNotThrow(() => selects[0]._listeners.change());
+    const { radios, sw } = previewWith({ sortOptions: options });
+    assert.doesNotThrow(() => radios.withinGroup[0]._listeners.change());
+    assert.doesNotThrow(() => sw._listeners.change());
   });
 
   it('focuses Apply normally, but the control that triggered a re-render keeps focus', () => {
-    const focusedWith = (activeSortKey) => {
+    const focusedWith = (activeSortKey, activeChoiceKey = null) => {
       const focused = [];
       const { make, document } = fakeUi();
       document.createElement = (tag) => { const el = make(tag); el.focus = () => focused.push(el); return el; };
-      if (activeSortKey) document.activeElement = { getAttribute: (k) => (k === 'data-wl-sort' ? activeSortKey : null) };
+      if (activeSortKey || activeChoiceKey) {
+        document.activeElement = { getAttribute: (k) => (k === 'data-wl-sort' ? activeSortKey : k === 'data-wl-sort-choice' ? activeChoiceKey : null) };
+      }
       const modal = loadGlobal('content/modal.js', 'WLModal', { document, WLHeadings: realHeadings() });
       const body = make('div');
-      const byKey = (key) => body.children[1].children.map(controlIn).find(c => c.getAttribute('data-wl-sort') === key);
-      body.querySelector = (selector) => byKey(/"(\w+)"/.exec(selector)[1]);
+      body.querySelector = selectorFor(body);
       const footer = make('div');
       modal._body = () => body;
       modal._footer = () => footer;
       modal.showPreview([], options);
-      return { focused, apply: footer.children[0], byKey };
+      return { focused, apply: footer.children[0], byKey: (key) => body.querySelector(`[data-wl-sort="${key}"]`) };
     };
 
     const plain = focusedWith(null);
     assert.deepEqual(plain.focused, [plain.apply]);
 
-    const select = focusedWith('groupOrder');
-    assert.deepEqual(select.focused, [select.byKey('groupOrder')]);
+    const row = focusedWith('groupOrder');
+    assert.equal(row.byKey('groupOrder').tagName, 'button');
+    assert.deepEqual(row.focused, [row.byKey('groupOrder')]);
 
-    const checkbox = focusedWith('inProgress');
-    assert.equal(checkbox.byKey('inProgress').tagName, 'input');
-    assert.deepEqual(checkbox.focused, [checkbox.byKey('inProgress')]);
+    const sw = focusedWith('inProgress');
+    assert.equal(sw.byKey('inProgress').type, 'checkbox');
+    assert.deepEqual(sw.focused, [sw.byKey('inProgress')]);
+
+    const toggle = focusedWith('toggle');
+    assert.deepEqual(toggle.focused, [toggle.byKey('toggle')]);
+
+    // A radio's list has folded by the time the re-render lands, so focus goes
+    // to the row that reopens it rather than to a hidden input.
+    const choice = focusedWith(null, 'withinGroup');
+    assert.deepEqual(choice.focused, [choice.byKey('withinGroup')]);
   });
 });
 
