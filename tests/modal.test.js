@@ -63,8 +63,12 @@ describe('WLModal.formatDuration', () => {
 });
 
 describe('WLModal.metaFor', () => {
-  it('shows remaining time for in-progress videos', () => {
-    assert.equal(load().metaFor(video({ cluster: null, duration: 600, percentWatched: 50 })), '5:00 left');
+  it('shows watched position over total for in-progress videos', () => {
+    assert.equal(load().metaFor(video({ cluster: null, duration: 600, percentWatched: 50 })), '5:00 / 10:00');
+  });
+
+  it('shows a zero position for a started video the user marked unwatched', () => {
+    assert.equal(load().metaFor(video({ cluster: 'Music', inProgress: false, duration: 600, percentWatched: 50 })), '0:00 / 10:00');
   });
 
   it('shows total duration for unwatched videos', () => {
@@ -93,8 +97,8 @@ describe('WLModal.isInProgress', () => {
     assert.equal(load().isInProgress(video({ cluster: 'Music' })), false);
   });
 
-  it('metaFor shows time left for a started video inside its category', () => {
-    assert.equal(load().metaFor(video({ cluster: 'Music', inProgress: true, duration: 600, percentWatched: 50 })), '5:00 left');
+  it('metaFor shows the watched position for a started video inside its category', () => {
+    assert.equal(load().metaFor(video({ cluster: 'Music', inProgress: true, duration: 600, percentWatched: 50 })), '5:00 / 10:00');
   });
 });
 
@@ -229,6 +233,18 @@ describe('WLModal.showPreview sort options', () => {
     const { panel, body } = previewWith({ sortOrder: [video({ id: 'a' })] });
     assert.equal(panel, null);
     assert.equal(body.children[0].className, 'wl-group-heading');
+  });
+
+  it('stacks the group meta under the label in the same markup as the injected headings', () => {
+    const { body } = previewWith({ sortOrder: [
+      video({ id: 'a', cluster: 'Music', duration: 600 }),
+      video({ id: 'b', cluster: 'Music', duration: 600 }),
+    ] });
+    const heading = body.children[0];
+    assert.deepEqual(heading.children.map(el => el.className), ['wl-group-label', 'wl-heading-meta']);
+    assert.deepEqual(heading.children[1].children.map(el => el.className), ['wl-heading-count', 'wl-heading-total']);
+    assert.equal(heading.children[1].children[0].textContent, '2 videos');
+    assert.equal(heading.children[1].children[1].textContent, '20m');
   });
 
   it('renders a collapsed "Sort options" disclosure row above the list that unfolds the panel', () => {
@@ -415,14 +431,47 @@ describe('WLModal.showPreview sort options', () => {
 });
 
 describe('WLModal._renderItem unwatched toggle', () => {
-  it('reports pressed only when the sorter treated a started video as unwatched', () => {
+  const itemWith = (v) => {
     const { document } = fakeUi();
     const modal = loadGlobal('content/modal.js', 'WLModal', { document });
     modal._handlers = {};
-    const pressed = (v) => modal._renderItem(v).children[2].getAttribute('aria-pressed');
+    return modal._renderItem(v);
+  };
+
+  it('reports pressed only when the sorter treated a started video as unwatched', () => {
+    const pressed = (v) => itemWith(v).children[2].getAttribute('aria-pressed');
     assert.equal(pressed(video({ percentWatched: 50, cluster: null, inProgress: true })), 'false');
     assert.equal(pressed(video({ percentWatched: 50, cluster: 'Music', inProgress: true })), 'false', 'within: started, not overridden');
     assert.equal(pressed(video({ percentWatched: 50, cluster: 'Music', inProgress: false })), 'true', 'overridden');
+  });
+
+  it('draws the control as an icon button whose name flips with its pressed state', () => {
+    const started = itemWith(video({ percentWatched: 50, cluster: 'Music', inProgress: true })).children[2];
+    assert.equal(started.className, 'wl-unwatch-btn');
+    assert.match(started.innerHTML, /^<svg/);
+    assert.equal(started.getAttribute('aria-label'), 'Mark as unwatched');
+    assert.equal(started.title, 'Mark as unwatched');
+
+    const undone = itemWith(video({ percentWatched: 50, cluster: 'Music', inProgress: false })).children[2];
+    assert.equal(undone.getAttribute('aria-label'), 'Undo mark as unwatched');
+    assert.equal(undone.title, 'Undo mark as unwatched');
+  });
+
+  it('pairs the button with the position-over-total time and omits both for unwatched videos', () => {
+    const started = itemWith(video({ percentWatched: 50, cluster: 'Music', inProgress: true }));
+    assert.equal(started.children[1].textContent, '5:00 / 10:00');
+    const fresh = itemWith(video({ percentWatched: 0 }));
+    assert.equal(fresh.children.length, 2, 'no button on an unwatched video');
+    assert.equal(fresh.children[1].textContent, '10:00');
+  });
+
+  it('routes a click to onToggleUnwatched with the video id', () => {
+    const { document } = fakeUi();
+    const modal = loadGlobal('content/modal.js', 'WLModal', { document });
+    const calls = [];
+    modal._handlers = { onToggleUnwatched: (id) => calls.push(id) };
+    modal._renderItem(video({ id: 'v9', percentWatched: 50, inProgress: true })).children[2]._listeners.click();
+    assert.deepEqual(calls, ['v9']);
   });
 });
 
@@ -649,6 +698,14 @@ describe('WLModal.showBusy cancellability', () => {
     const { modal, button } = busyWith(undefined);
     assert.equal(modal._cancellable, true);
     assert.equal(button.disabled, undefined, 'the default Cancel button stays enabled');
+  });
+
+  it('wraps the label and bar in one inset block', () => {
+    const { modal } = busyWith(undefined);
+    const [busy] = modal._body().children;
+    assert.equal(busy.className, 'wl-busy');
+    assert.deepEqual(busy.children.map(el => el.className), ['', 'wl-progress-bar']);
+    assert.equal(busy.children[0].textContent, 'Applying 3 moves...');
   });
 
   it('disables the button when the work has already been sent', () => {

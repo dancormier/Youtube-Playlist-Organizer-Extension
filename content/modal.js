@@ -8,6 +8,7 @@ const WLModal = {
   // group map and in every string comparison against the label.
   PLAY_ICON: '<svg class="wl-play-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
   CHEVRON_ICON: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.707 8.793a1 1 0 00-1.414 0L12 14.086 6.707 8.793a1 1 0 10-1.414 1.414L12 16.914l6.707-6.707a1 1 0 000-1.414Z"/></svg>',
+  RESTART_ICON: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>',
   CHECK_ICON: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>',
 
   // Mirror of lib/sort.js SORT_CHOICES — content scripts cannot import lib/.
@@ -92,13 +93,22 @@ const WLModal = {
     return video.inProgress ?? video.cluster === null;
   },
 
+  /**
+   * A started video reads "2:14 / 5:24"; one the user marked unwatched reads
+   * "0:00 / 5:24" so the override is visible in the time itself.
+   */
   metaFor(video) {
     if (video.unavailable) return 'unavailable';
-    if (this.isInProgress(video)) {
-      const pct = Number(video.percentWatched) || 0;
-      return `${this.formatDuration(video.duration * (1 - pct / 100))} left`;
+    if (this.hasWatchTime(video)) {
+      const pct = this.isInProgress(video) ? Number(video.percentWatched) || 0 : 0;
+      return `${this.formatDuration(video.duration * pct / 100)} / ${this.formatDuration(video.duration)}`;
     }
     return this.formatDuration(video.duration);
+  },
+
+  /** Where the unwatch control can help: videos YouTube considers started. */
+  hasWatchTime(video) {
+    return !video.unavailable && video.percentWatched > 0;
   },
 
   // ── Trigger ────────────────────────────────────────────────────────────
@@ -316,6 +326,9 @@ const WLModal = {
     body.textContent = '';
     footer.textContent = '';
 
+    const busy = document.createElement('div');
+    busy.className = 'wl-busy';
+
     const label = document.createElement('p');
     label.textContent = text;
 
@@ -323,7 +336,8 @@ const WLModal = {
     bar.className = 'wl-progress-bar';
     bar.innerHTML = `<div class="wl-progress-fill"></div>`;
 
-    body.append(label, bar);
+    busy.append(label, bar);
+    body.appendChild(busy);
 
     const cancel = document.createElement('button');
     cancel.className = 'wl-modal-btn';
@@ -411,15 +425,23 @@ const WLModal = {
     (restore || apply).focus();
   },
 
-  /** "12 videos · 3h 12m" beside a preview heading, same rule as the injected headings. */
+  /** "12 videos · 3h 12m" under a preview heading, same markup as the injected headings. */
   _renderGroupMeta(videos) {
     const meta = document.createElement('span');
-    meta.className = 'wl-group-meta';
-    const count = `${videos.length} video${videos.length === 1 ? '' : 's'}`;
+    meta.className = 'wl-heading-meta';
+    const count = document.createElement('span');
+    count.className = 'wl-heading-count';
+    count.textContent = `${videos.length} video${videos.length === 1 ? '' : 's'}`;
+    meta.appendChild(count);
     // WLHeadings loads after this file but this runs at click time, long after
     // every content script is in — the same reason showModes can call present().
     const remaining = WLHeadings.remainingSeconds(videos);
-    meta.textContent = remaining > 0 ? `${count} · ${WLHeadings.formatTotal(remaining)}` : count;
+    if (remaining > 0) {
+      const total = document.createElement('span');
+      total.className = 'wl-heading-total';
+      total.textContent = WLHeadings.formatTotal(remaining);
+      meta.appendChild(total);
+    }
     return meta;
   },
 
@@ -569,14 +591,16 @@ const WLModal = {
 
     row.append(title, meta);
 
-    // Offer the toggle only where it can help: videos YouTube considers watched.
-    if (!video.unavailable && video.percentWatched > 0) {
+    if (this.hasWatchTime(video)) {
+      const pressed = !this.isInProgress(video);
       const toggle = document.createElement('button');
       toggle.className = 'wl-unwatch-btn';
       toggle.type = 'button';
-      toggle.textContent = 'Unwatched';
-      toggle.setAttribute('aria-pressed', String(!this.isInProgress(video)));
-      toggle.setAttribute('aria-label', `Treat "${video.title}" as unwatched`);
+      toggle.innerHTML = this.RESTART_ICON;
+      toggle.setAttribute('aria-pressed', String(pressed));
+      const name = pressed ? 'Undo mark as unwatched' : 'Mark as unwatched';
+      toggle.setAttribute('aria-label', name);
+      toggle.title = name;
       toggle.addEventListener('click', () => this._handlers.onToggleUnwatched?.(video.id));
       row.appendChild(toggle);
     }

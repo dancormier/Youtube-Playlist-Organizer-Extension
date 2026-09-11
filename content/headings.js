@@ -91,21 +91,25 @@ const WLHeadings = {
     if (inProgress) heading.innerHTML = this.PLAY_ICON;
 
     const label = document.createElement('span');
+    label.className = 'wl-heading-label';
     label.textContent = name;
     heading.appendChild(label);
 
+    const meta = document.createElement('span');
+    meta.className = 'wl-heading-meta';
     if (count > 0) {
       const counter = document.createElement('span');
       counter.className = 'wl-heading-count';
       counter.textContent = `${count} video${count === 1 ? '' : 's'}`;
-      heading.appendChild(counter);
+      meta.appendChild(counter);
     }
     if (remaining > 0) {
       const total = document.createElement('span');
       total.className = 'wl-heading-total';
       total.textContent = this.formatTotal(remaining);
-      heading.appendChild(total);
+      meta.appendChild(total);
     }
+    if (meta.children.length > 0) heading.appendChild(meta);
     return heading;
   },
 

@@ -74,6 +74,7 @@ html[dark] .wl-trigger.wl-trigger-inline:hover { background: rgba(255, 255, 255,
   --wl-outline: rgba(0, 0, 0, 0.2);
   --wl-accent: #065fd4;
   --wl-in-progress: #b3261e;
+  --wl-switch-on: #2ba640;
   --wl-inverse-bg: #0f0f0f;
   --wl-inverse-text: #fff;
   --wl-shadow: 0 4px 32px rgba(0, 0, 0, 0.1);
@@ -97,6 +98,7 @@ html[dark] .wl-modal-backdrop {
   --wl-outline: rgba(255, 255, 255, 0.2);
   --wl-accent: #3ea6ff;
   --wl-in-progress: #ff8a80;
+  --wl-switch-on: #2ba640;
   --wl-inverse-bg: #f1f1f1;
   --wl-inverse-text: #0f0f0f;
   --wl-shadow: 0 4px 32px rgba(0, 0, 0, 0.5);
@@ -129,14 +131,14 @@ html[dark] .wl-modal-backdrop {
 
 /* No top padding: a sticky heading pins to the scrollport edge, and any
    padding there shows as a strip that scrolled items peek through. Rows carry
-   their own horizontal padding so hover fills reach the panel edge. */
+   their own horizontal padding so hover fills reach the panel edge; the few
+   non-row blocks (busy, error) carry their own inset. */
 .wl-modal-body {
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 0 0 8px;
   border-top: 1px solid var(--wl-layer-2);
 }
-.wl-modal-body > :first-child:not(.wl-group-heading) { margin-top: 8px; }
-.wl-modal-body > p { margin: 8px 20px; color: var(--wl-text-2); font-size: 1.4rem; }
 .wl-modal-footer {
   display: flex;
   flex-wrap: wrap;
@@ -167,11 +169,13 @@ html[dark] .wl-modal-backdrop {
 .wl-modal-btn.wl-primary { background: var(--wl-inverse-bg); color: var(--wl-inverse-text); }
 .wl-modal-btn.wl-primary:hover { opacity: 0.9; }
 
-.wl-mode-choice { display: flex; flex-direction: column; }
+.wl-mode-choice { display: flex; flex-direction: column; gap: 0; }
 .wl-mode-btn {
   display: block;
+  box-sizing: border-box;
   width: 100%;
   min-height: 56px;
+  margin: 0;
   padding: 8px 20px;
   border: none;
   background: transparent;
@@ -182,16 +186,20 @@ html[dark] .wl-modal-backdrop {
   text-align: left;
   cursor: pointer;
 }
-.wl-mode-btn + .wl-mode-btn { border-top: 1px solid var(--wl-layer-2); }
+.wl-mode-btn:not(:last-child) { border-bottom: 1px solid var(--wl-layer-2); }
 .wl-mode-btn:hover { background: var(--wl-layer); }
 .wl-mode-btn small { display: block; color: var(--wl-text-2); font-size: 1.2rem; line-height: 1.6rem; }
 
 /* Menu rows: the sort-options disclosure, each option, and its choices. */
+/* border-box matters: the switch row is a <label>, which unlike <button> is
+   content-box by default, so 100% + padding pushed it past the body's width. */
 .wl-row {
   display: flex;
   align-items: center;
   gap: 12px;
+  box-sizing: border-box;
   width: 100%;
+  min-width: 0;
   min-height: 40px;
   margin: 0;
   padding: 0 20px;
@@ -230,18 +238,22 @@ html[dark] .wl-modal-backdrop {
 .wl-option-check svg { width: 20px; height: 20px; color: var(--wl-text); visibility: hidden; }
 .wl-option input:checked + .wl-option-check svg { visibility: visible; }
 
+.wl-switch-row { min-width: 0; overflow: hidden; }
 .wl-switch {
   appearance: none;
   -webkit-appearance: none;
   position: relative;
   flex-shrink: 0;
+  box-sizing: border-box;
   width: 36px;
   height: 20px;
   margin: 0;
+  padding: 0;
   border: none;
   border-radius: 10px;
   background: var(--wl-layer-2);
   cursor: pointer;
+  transition: background 150ms ease-out;
 }
 .wl-switch::before {
   content: '';
@@ -251,38 +263,50 @@ html[dark] .wl-modal-backdrop {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--wl-text);
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   transition: transform 150ms ease-out;
 }
-.wl-switch:checked { background: var(--wl-accent); }
+.wl-switch:checked { background: var(--wl-switch-on); }
+/* 2px + 16px knob + 16px travel = 34px: stays inside the 36px track. */
 .wl-switch:checked::before { transform: translateX(16px); }
 
+/* YouTube's section-title shape: bold title, meta on its own line beneath.
+   The play icon precedes the title as a sibling, so the heading wraps instead
+   of stacking, and the meta takes the whole second line. */
 .wl-group-heading {
   position: sticky;
   top: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 2px 8px;
   background: var(--wl-surface);
-  padding: 12px 20px;
+  padding: 12px 20px 8px;
   margin: 0;
-  font-size: 1.4rem;
-  font-weight: 500;
-  color: var(--wl-text-2);
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 2.2rem;
+  color: var(--wl-text);
 }
 .wl-group-heading.wl-in-progress { color: var(--wl-in-progress); }
-.wl-group-heading .wl-play-icon { width: 12px; height: 12px; flex-shrink: 0; }
-.wl-group-heading .wl-group-meta {
+.wl-group-heading .wl-play-icon { width: 14px; height: 14px; flex-shrink: 0; }
+.wl-group-heading .wl-heading-meta {
+  flex-basis: 100%;
   color: var(--wl-text-2);
-  font-size: 1.2rem;
+  font-size: 1.3rem;
   font-weight: 400;
+  line-height: 1.8rem;
 }
+.wl-group-heading .wl-heading-total::before { content: '· '; }
 
 .wl-modal-item {
   display: flex;
   align-items: center;
   gap: 12px;
+  box-sizing: border-box;
   min-height: 40px;
+  margin: 0;
   padding: 0 20px;
   font-size: 1.4rem;
   line-height: 2rem;
@@ -294,20 +318,23 @@ html[dark] .wl-modal-backdrop {
 .wl-item-meta { color: var(--wl-text-2); font-size: 1.3rem; white-space: nowrap; }
 
 .wl-unwatch-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  height: 28px;
-  padding: 0 12px;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  padding: 0;
   border: none;
-  border-radius: 14px;
-  background: var(--wl-layer);
+  border-radius: 50%;
+  background: transparent;
   color: var(--wl-text);
-  font-family: inherit;
-  font-size: 1.2rem;
-  font-weight: 500;
   cursor: pointer;
 }
-.wl-unwatch-btn:hover { background: var(--wl-layer-2); }
-.wl-unwatch-btn[aria-pressed="true"] { background: var(--wl-inverse-bg); color: var(--wl-inverse-text); }
+.wl-unwatch-btn svg { width: 20px; height: 20px; }
+.wl-unwatch-btn:hover { background: var(--wl-layer); }
+.wl-unwatch-btn[aria-pressed="true"] { background: var(--wl-layer-2); }
 
 /* Visible focus for keyboard users — required for WCAG 2.1 AA. The radio and
    switch inputs sit inside a label row, so the row shows the ring for them. */
@@ -323,14 +350,16 @@ html[dark] .wl-modal-backdrop {
   outline-offset: 2px;
 }
 
-.wl-modal-error { margin: 8px 20px; color: var(--wl-in-progress); font-size: 1.4rem; }
+.wl-modal-error { margin: 0; padding: 20px 20px 12px; color: var(--wl-in-progress); font-size: 1.4rem; }
 
+.wl-busy { padding: 20px 20px 12px; }
+.wl-busy p { margin: 0 0 12px; color: var(--wl-text-2); font-size: 1.4rem; }
 .wl-progress-bar {
   background: var(--wl-layer);
   border-radius: 4px;
   height: 4px;
   overflow: hidden;
-  margin: 8px 20px 16px;
+  margin: 0;
 }
 .wl-progress-fill {
   background: var(--wl-text);
@@ -346,6 +375,7 @@ html[dark] .wl-modal-backdrop {
 
 @media (prefers-reduced-motion: reduce) {
   .wl-chevron svg,
+  .wl-switch,
   .wl-switch::before { transition: none; }
   .wl-progress-fill { animation: none; width: 100%; opacity: 0.4; }
 }
