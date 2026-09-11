@@ -194,3 +194,33 @@ describe('RESORT sort options', () => {
     assert.equal(response.sortOptions.withinGroup, 'duration-asc');
   });
 });
+
+describe('SORT_BY_DURATION `by`', () => {
+  const videos = [
+    video({ id: 'b', duration: 9, title: 'Beta', channel: 'Zed' }),
+    video({ id: 'a', duration: 1, title: 'Alpha', channel: 'Yak' }),
+    video({ id: 'c', duration: 5, title: 'Gamma', channel: 'Yak' }),
+  ];
+  const ids = (response) => response.sortOrder.map(v => v.id);
+
+  it('sorts by duration when the message carries no `by`', async () => {
+    const { chrome, localStore } = createChromeMock();
+    const response = await sendMessage(chrome, { type: 'SORT_BY_DURATION', videos });
+    assert.equal(response.success, true);
+    assert.deepEqual(ids(response), ['a', 'c', 'b']);
+    assert.equal(localStore.sortState, undefined, 'the simple sorts never wrote sortState');
+  });
+
+  it('sorts by title and by channel-then-title on request', async () => {
+    const { chrome } = createChromeMock();
+    assert.deepEqual(ids(await sendMessage(chrome, { type: 'SORT_BY_DURATION', videos, by: 'title' })), ['a', 'b', 'c']);
+    assert.deepEqual(ids(await sendMessage(chrome, { type: 'SORT_BY_DURATION', videos, by: 'channel' })), ['a', 'c', 'b']);
+  });
+
+  it('answers an unknown `by` with an error instead of dropping the message', async () => {
+    const { chrome } = createChromeMock();
+    const response = await sendMessage(chrome, { type: 'SORT_BY_DURATION', videos, by: 'views' });
+    assert.equal(response.success, false);
+    assert.match(response.error, /Unknown sort/);
+  });
+});

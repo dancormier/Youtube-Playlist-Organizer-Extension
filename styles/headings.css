@@ -32,9 +32,8 @@
   /* Aligns the heading with the video thumbnails below it. */
   left: 36px;
   right: 0;
-  /* YouTube's section-title shape: bold title, meta on its own line beneath.
-     The play icon precedes the title as a sibling, so the heading wraps instead
-     of stacking, and the meta takes the whole second line. */
+  /* YouTube's section-title shape: bold title, meta on its own line beneath
+     (the meta's flex-basis wraps it onto the second line). */
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -56,7 +55,6 @@ html[dark] .wl-playlist-heading {
 }
 
 .wl-playlist-heading.wl-in-progress { color: var(--wl-in-progress); }
-.wl-playlist-heading .wl-play-icon { width: 16px; height: 16px; flex-shrink: 0; }
 
 .wl-playlist-heading .wl-heading-meta {
   flex-basis: 100%;

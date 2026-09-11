@@ -155,7 +155,7 @@ function showModesWith({ present, handlers = {} }) {
   modal._footer = () => footer;
   modal._handlers = handlers;
   modal.showModes();
-  return { footer, labels: footer.children.map(el => el.textContent) };
+  return { body, footer, labels: footer.children.map(el => el.textContent) };
 }
 
 describe('WLModal.showModes', () => {
@@ -177,6 +177,27 @@ describe('WLModal.showModes', () => {
     });
     footer.children.find(el => el.textContent === 'Hide group headings')._listeners.click();
     assert.equal(called, true);
+  });
+
+  it('offers the AI sort and the three simple sorts as rows, in that order, with their captions', () => {
+    const { body } = showModesWith({ present: false });
+    const rows = body.children[0].children;
+    assert.equal(body.children[0].className, 'wl-mode-choice');
+    assert.deepEqual(rows.map(r => r.className), Array(4).fill('wl-mode-btn'));
+    assert.deepEqual(rows.map(r => r.innerHTML), [
+      'Analyze &amp; sort<small>Groups videos by topic using Claude. Needs an API key. Takes a few seconds.</small>',
+      'Sort by duration<small>Shortest first. Instant, no API key needed.</small>',
+      'Sort by title<small>A to Z. Instant, no API key needed.</small>',
+      'Sort by channel<small>Channel name A to Z, then title. Instant, no API key needed.</small>',
+    ]);
+    assert.equal(rows[0]._focusCalls, 1, 'the AI row takes focus');
+  });
+
+  it('each mode row hands its mode to onSort', () => {
+    const modes = [];
+    const { body } = showModesWith({ present: false, handlers: { onSort: (mode) => modes.push(mode) } });
+    for (const row of body.children[0].children) row._listeners.click();
+    assert.deepEqual(modes, ['ai', 'duration', 'title', 'channel']);
   });
 
   it('does not throw when showModes runs with no handlers registered', () => {
@@ -254,6 +275,15 @@ describe('WLModal.showPreview sort options', () => {
     assert.deepEqual(heading.children[1].children.map(el => el.className), ['wl-heading-count', 'wl-heading-total']);
     assert.equal(heading.children[1].children[0].textContent, '2 videos');
     assert.equal(heading.children[1].children[1].textContent, '20m');
+  });
+
+  it('draws the in-progress heading as a plain coloured label with no icon', () => {
+    const { body } = previewWith({ sortOrder: [video({ id: 'a', cluster: null, inProgress: true, percentWatched: 50 })] });
+    const heading = body.children[0];
+    assert.equal(heading.className, 'wl-group-heading wl-in-progress');
+    assert.equal(heading.innerHTML, '');
+    assert.deepEqual(heading.children.map(el => el.className), ['wl-group-label', 'wl-heading-meta']);
+    assert.equal(heading.children[0].textContent, 'In progress');
   });
 
   it('renders a collapsed "Sort options" disclosure row above the list that unfolds the panel', () => {
@@ -472,6 +502,14 @@ describe('WLModal._renderItem unwatched toggle', () => {
     const fresh = itemWith(video({ percentWatched: 0 }));
     assert.equal(fresh.children.length, 2, 'no button on an unwatched video');
     assert.equal(fresh.children[1].textContent, '10:00');
+  });
+
+  it('omits the control from a simple-sort order, where no cached analysis backs a resort', () => {
+    // Simple sorts (lib/sort.js buildSimpleSortOrder) copy the input videos,
+    // which carry no `cluster` key; an AI order always has one, even if null.
+    const simple = { id: 'v', title: 'T', duration: 600, percentWatched: 50, unavailable: false };
+    assert.equal(itemWith(simple).children.length, 2);
+    assert.equal(itemWith({ ...simple, cluster: null, inProgress: true }).children.length, 3);
   });
 
   it('routes a click to onToggleUnwatched with the video id', () => {

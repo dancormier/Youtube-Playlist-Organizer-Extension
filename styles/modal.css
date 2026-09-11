@@ -170,6 +170,9 @@ html[dark] .wl-modal-backdrop {
 .wl-modal-btn.wl-primary:hover { opacity: 0.9; }
 
 .wl-mode-choice { display: flex; flex-direction: column; gap: 0; }
+/* The body's bottom padding is air under the preview list; here it would
+   open a gap between the last mode row and the footer hairline. */
+.wl-modal-body:has(> .wl-mode-choice) { padding-bottom: 0; }
 .wl-mode-btn {
   display: block;
   box-sizing: border-box;
@@ -218,6 +221,9 @@ html[dark] .wl-modal-backdrop {
 .wl-chevron svg { width: 20px; height: 20px; transition: transform 150ms ease-out; }
 .wl-row[aria-expanded="true"] .wl-chevron svg { transform: rotate(180deg); }
 
+/* One hairline separates the sort section from the list: under the collapsed
+   row, or under the unfolded panel. */
+.wl-row-disclosure[aria-expanded="false"] { border-bottom: 1px solid var(--wl-layer-2); }
 .wl-sort-options { border-bottom: 1px solid var(--wl-layer-2); }
 .wl-sort-options[hidden] { display: none; }
 .wl-sort-options > .wl-row { padding-left: 40px; }
@@ -271,9 +277,8 @@ html[dark] .wl-modal-backdrop {
 /* 2px + 16px knob + 16px travel = 34px: stays inside the 36px track. */
 .wl-switch:checked::before { transform: translateX(16px); }
 
-/* YouTube's section-title shape: bold title, meta on its own line beneath.
-   The play icon precedes the title as a sibling, so the heading wraps instead
-   of stacking, and the meta takes the whole second line. */
+/* YouTube's section-title shape: bold title, meta on its own line beneath
+   (the meta's flex-basis wraps it onto the second line). */
 .wl-group-heading {
   position: sticky;
   top: 0;
@@ -290,7 +295,6 @@ html[dark] .wl-modal-backdrop {
   color: var(--wl-text);
 }
 .wl-group-heading.wl-in-progress { color: var(--wl-in-progress); }
-.wl-group-heading .wl-play-icon { width: 14px; height: 14px; flex-shrink: 0; }
 .wl-group-heading .wl-heading-meta {
   flex-basis: 100%;
   color: var(--wl-text-2);
@@ -331,7 +335,15 @@ html[dark] .wl-modal-backdrop {
   background: transparent;
   color: var(--wl-text);
   cursor: pointer;
+  /* Revealed by the row, not hidden from it: opacity keeps the button in the
+     tab order, so focusing it (focus-within) is what shows it to a keyboard
+     user. An active override is never invisible. */
+  opacity: 0;
+  transition: opacity 120ms ease-out;
 }
+.wl-modal-item:hover .wl-unwatch-btn,
+.wl-modal-item:focus-within .wl-unwatch-btn,
+.wl-unwatch-btn[aria-pressed="true"] { opacity: 1; }
 .wl-unwatch-btn svg { width: 20px; height: 20px; }
 .wl-unwatch-btn:hover { background: var(--wl-layer); }
 .wl-unwatch-btn[aria-pressed="true"] { background: var(--wl-layer-2); }
@@ -376,6 +388,7 @@ html[dark] .wl-modal-backdrop {
 @media (prefers-reduced-motion: reduce) {
   .wl-chevron svg,
   .wl-switch,
-  .wl-switch::before { transition: none; }
+  .wl-switch::before,
+  .wl-unwatch-btn { transition: none; }
   .wl-progress-fill { animation: none; width: 100%; opacity: 0.4; }
 }

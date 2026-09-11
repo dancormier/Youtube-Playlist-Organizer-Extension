@@ -4,9 +4,6 @@
 
 const WLModal = {
   IN_PROGRESS_LABEL: 'In progress',
-  // Drawn, not typed: a glyph in the label would also end up in the stored
-  // group map and in every string comparison against the label.
-  PLAY_ICON: '<svg class="wl-play-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
   CHEVRON_ICON: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.707 8.793a1 1 0 00-1.414 0L12 14.086 6.707 8.793a1 1 0 10-1.414 1.414L12 16.914l6.707-6.707a1 1 0 000-1.414Z"/></svg>',
   RESTART_ICON: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>',
   CHECK_ICON: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>',
@@ -31,6 +28,13 @@ const WLModal = {
       { value: 'alpha', label: 'Alphabetical' },
     ],
   },
+  // The rows of the mode-choice view, in display order. `label` is HTML.
+  MODES: [
+    { mode: 'ai', label: 'Analyze &amp; sort', detail: 'Groups videos by topic using Claude. Needs an API key. Takes a few seconds.' },
+    { mode: 'duration', label: 'Sort by duration', detail: 'Shortest first. Instant, no API key needed.' },
+    { mode: 'title', label: 'Sort by title', detail: 'A to Z. Instant, no API key needed.' },
+    { mode: 'channel', label: 'Sort by channel', detail: 'Channel name A to Z, then title. Instant, no API key needed.' },
+  ],
   SORT_FIELD_LABELS: {
     withinGroup: 'Within a group',
     inProgress: 'Group in progress',
@@ -280,19 +284,15 @@ const WLModal = {
     const wrap = document.createElement('div');
     wrap.className = 'wl-mode-choice';
 
-    const ai = document.createElement('button');
-    ai.className = 'wl-mode-btn';
-    ai.type = 'button';
-    ai.innerHTML = `Analyze &amp; sort<small>Groups videos by topic using Claude. Needs an API key. Takes a few seconds.</small>`;
-    ai.addEventListener('click', () => this._handlers.onSort?.('ai'));
-
-    const duration = document.createElement('button');
-    duration.className = 'wl-mode-btn';
-    duration.type = 'button';
-    duration.innerHTML = `Sort by duration<small>Shortest first. Instant, no API key needed.</small>`;
-    duration.addEventListener('click', () => this._handlers.onSort?.('duration'));
-
-    wrap.append(ai, duration);
+    const buttons = this.MODES.map(({ mode, label, detail }) => {
+      const button = document.createElement('button');
+      button.className = 'wl-mode-btn';
+      button.type = 'button';
+      button.innerHTML = `${label}<small>${detail}</small>`;
+      button.addEventListener('click', () => this._handlers.onSort?.(mode));
+      return button;
+    });
+    wrap.append(...buttons);
     body.appendChild(wrap);
 
     // Only offered when there is something to hide. WLHeadings loads after this
@@ -313,7 +313,7 @@ const WLModal = {
     cancel.addEventListener('click', () => this._cancel());
     footer.appendChild(cancel);
 
-    ai.focus();
+    buttons[0].focus();
   },
 
   /**
@@ -402,7 +402,6 @@ const WLModal = {
         const heading = document.createElement('h3');
         const inProgress = group.name === this.IN_PROGRESS_LABEL;
         heading.className = inProgress ? 'wl-group-heading wl-in-progress' : 'wl-group-heading';
-        if (inProgress) heading.innerHTML = this.PLAY_ICON;
         const label = document.createElement('span');
         label.className = 'wl-group-label';
         label.textContent = group.name;
@@ -597,7 +596,9 @@ const WLModal = {
 
     row.append(title, meta);
 
-    if (this.hasWatchTime(video)) {
+    // Only an AI order carries `cluster`; the simple sorts have no cached
+    // analysis for the toggle's RESORT to recompute against.
+    if ('cluster' in video && this.hasWatchTime(video)) {
       const pressed = !this.isInProgress(video);
       const toggle = document.createElement('button');
       toggle.className = 'wl-unwatch-btn';

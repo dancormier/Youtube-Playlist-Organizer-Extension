@@ -7,12 +7,15 @@ const WLPanel = {
   currentSortOrder: [],
   currentPlaylistId: null,
   currentSortOptions: null,
+  // The mode of the run that produced currentSortOrder; only 'ai' has a cached
+  // analysis for RESORT to work from.
+  currentMode: null,
 
   openModal() {
     WLModal.open({
       onSort: (mode) => this.runSort(mode),
       onApply: () => this.applySort(),
-      onCancel: () => { this._runId++; this.currentSortOrder = []; },
+      onCancel: () => { this._runId++; this.currentSortOrder = []; this.currentMode = null; },
       onToggleUnwatched: (videoId) => this.toggleUnwatched(videoId),
       onSortOptionsChange: (sortOptions) => this.changeSortOptions(sortOptions),
       onHideHeadings: () => this.hideHeadings(),
@@ -36,12 +39,13 @@ const WLPanel = {
   },
 
   /**
-   * @param {'ai'|'duration'} mode
-   * 'duration' sorts locally and never calls Claude — no API key needed, and it
-   * skips enrichment since nothing consumes the metadata.
+   * @param {'ai'|'duration'|'title'|'channel'} mode
+   * The non-AI modes sort locally and never call the model — no API key
+   * needed, and they skip enrichment since nothing consumes the metadata.
    */
   async runSort(mode) {
     const runId = ++this._runId;
+    this.currentMode = mode;
 
     try {
       const playlistId = new URL(location.href).searchParams.get('list');
@@ -66,8 +70,8 @@ const WLPanel = {
         WLModal.showBusy('Categorizing with AI...');
         result = await chrome.runtime.sendMessage({ type: 'ANALYZE', videos, playlistId });
       } else {
-        WLModal.showBusy('Sorting by duration...');
-        result = await chrome.runtime.sendMessage({ type: 'SORT_BY_DURATION', videos });
+        WLModal.showBusy(`Sorting by ${mode}...`);
+        result = await chrome.runtime.sendMessage({ type: 'SORT_BY_DURATION', videos, by: mode });
       }
       if (runId !== this._runId) return;
 
@@ -89,8 +93,13 @@ const WLPanel = {
    * The check exists because navigating away (resetForNavigation() bumps _runId)
    * while this is in flight must stop it from painting a stale order over
    * whatever session owns the modal by the time it resolves.
+   *
+   * Outside AI mode there is nothing to recompute: the background would answer
+   * RESORT from the last AI run's cache and repaint a simple-sort preview with
+   * that grouping.
    */
   async toggleUnwatched(videoId) {
+    if (this.currentMode !== 'ai') return;
     const runId = this._runId;
     WLModal.setStatus('Re-sorting...');
 
@@ -126,6 +135,7 @@ const WLPanel = {
    * ones, so this cannot undo a "treat as unwatched" toggle in flight.
    */
   async changeSortOptions(sortOptions) {
+    if (this.currentMode !== 'ai') return;
     const runId = this._runId;
     // Firefox fires `change` per arrow-key step, so replies can arrive out of
     // order; only the newest request may paint or persist.
@@ -369,6 +379,7 @@ function resetForNavigation() {
   WLPanel.currentSortOrder = [];
   WLPanel.currentPlaylistId = null;
   WLPanel.currentSortOptions = null;
+  WLPanel.currentMode = null;
   WLModal.close();
   WLInnerTube.resetConfig();
   WLHeadings.stop();

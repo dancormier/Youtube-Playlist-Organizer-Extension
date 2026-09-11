@@ -383,7 +383,7 @@ describe('WLHeadings.inject', () => {
     assert.equal(heading.children[1].children.length, 1, 'a group map stored without remaining gets no total');
   });
 
-  it('draws the in-progress heading with a play icon and no typed glyph in its label', () => {
+  it('draws the in-progress heading as a plain label, no icon and no typed glyph', () => {
     const { document, headingIn } = fakePlaylist(['a']);
     const headings = loadGlobal('content/headings.js', 'WLHeadings', {
       document, SELECTORS, MutationObserver: class { observe() {} disconnect() {} },
@@ -393,7 +393,8 @@ describe('WLHeadings.inject', () => {
 
     const heading = headingIn(0);
     assert.equal(heading.className, 'wl-playlist-heading wl-in-progress');
-    assert.match(heading.innerHTML, /^<svg class="wl-play-icon"/);
+    assert.ok(!heading.innerHTML, 'no markup precedes the label');
+    assert.equal(heading.children[0].className, 'wl-heading-label');
     assert.equal(heading.children[0].textContent, 'In progress');
     assert.equal(heading.getAttribute('data-wl-heading'), 'In progress');
   });

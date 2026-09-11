@@ -3,9 +3,6 @@
 
 const WLHeadings = {
   IN_PROGRESS_LABEL: 'In progress',
-  // Same icon as WLModal.PLAY_ICON; duplicated because content scripts share
-  // nothing but load order, and the tests load this file alone.
-  PLAY_ICON: '<svg class="wl-play-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>',
   ATTRIBUTE: 'data-wl-heading',
   ANCHOR_CLASS: 'wl-group-anchor',
 
@@ -88,7 +85,6 @@ const WLHeadings = {
     const inProgress = name === this.IN_PROGRESS_LABEL;
     heading.className = inProgress ? 'wl-playlist-heading wl-in-progress' : 'wl-playlist-heading';
     heading.setAttribute(this.ATTRIBUTE, name);
-    if (inProgress) heading.innerHTML = this.PLAY_ICON;
 
     const label = document.createElement('span');
     label.className = 'wl-heading-label';
