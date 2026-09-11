@@ -326,14 +326,14 @@ html[dark] .wl-modal-backdrop {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   margin: 0;
   padding: 0;
   border: none;
   border-radius: 50%;
   background: transparent;
-  color: var(--wl-text);
+  color: var(--wl-text-2);
   cursor: pointer;
   /* Revealed by the row, not hidden from it: opacity keeps the button in the
      tab order, so focusing it (focus-within) is what shows it to a keyboard
@@ -344,9 +344,9 @@ html[dark] .wl-modal-backdrop {
 .wl-modal-item:hover .wl-unwatch-btn,
 .wl-modal-item:focus-within .wl-unwatch-btn,
 .wl-unwatch-btn[aria-pressed="true"] { opacity: 1; }
-.wl-unwatch-btn svg { width: 20px; height: 20px; }
+.wl-unwatch-btn svg { width: 16px; height: 16px; }
 .wl-unwatch-btn:hover { background: var(--wl-layer); }
-.wl-unwatch-btn[aria-pressed="true"] { background: var(--wl-layer-2); }
+.wl-unwatch-btn[aria-pressed="true"] { color: var(--wl-text); }
 
 /* Visible focus for keyboard users — required for WCAG 2.1 AA. The radio and
    switch inputs sit inside a label row, so the row shows the ring for them. */

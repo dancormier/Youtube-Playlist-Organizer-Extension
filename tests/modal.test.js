@@ -483,27 +483,27 @@ describe('WLModal._renderItem unwatched toggle', () => {
   };
 
   it('reports pressed only when the sorter treated a started video as unwatched', () => {
-    const pressed = (v) => itemWith(v).children[2].getAttribute('aria-pressed');
+    const pressed = (v) => itemWith(v).children[1].getAttribute('aria-pressed');
     assert.equal(pressed(video({ percentWatched: 50, cluster: null, inProgress: true })), 'false');
     assert.equal(pressed(video({ percentWatched: 50, cluster: 'Music', inProgress: true })), 'false', 'within: started, not overridden');
     assert.equal(pressed(video({ percentWatched: 50, cluster: 'Music', inProgress: false })), 'true', 'overridden');
   });
 
   it('draws the control as an icon button whose name flips with its pressed state', () => {
-    const started = itemWith(video({ percentWatched: 50, cluster: 'Music', inProgress: true })).children[2];
+    const started = itemWith(video({ percentWatched: 50, cluster: 'Music', inProgress: true })).children[1];
     assert.equal(started.className, 'wl-unwatch-btn');
     assert.match(started.innerHTML, /^<svg/);
     assert.equal(started.getAttribute('aria-label'), 'Mark as unwatched');
     assert.equal(started.title, 'Mark as unwatched');
 
-    const undone = itemWith(video({ percentWatched: 50, cluster: 'Music', inProgress: false })).children[2];
+    const undone = itemWith(video({ percentWatched: 50, cluster: 'Music', inProgress: false })).children[1];
     assert.equal(undone.getAttribute('aria-label'), 'Mark as unwatched', 'name is fixed; aria-pressed carries the state');
     assert.equal(undone.title, 'Marked as unwatched (click to undo)');
   });
 
   it('pairs the button with the position-over-total time and omits both for unwatched videos', () => {
     const started = itemWith(video({ percentWatched: 50, cluster: 'Music', inProgress: true }));
-    assert.equal(started.children[1].textContent, '5:00 / 10:00');
+    assert.equal(started.children[2].textContent, '5:00 / 10:00', 'timestamp follows the button');
     const fresh = itemWith(video({ percentWatched: 0 }));
     assert.equal(fresh.children.length, 2, 'no button on an unwatched video');
     assert.equal(fresh.children[1].textContent, '10:00');
@@ -522,7 +522,7 @@ describe('WLModal._renderItem unwatched toggle', () => {
     const modal = loadGlobal('content/modal.js', 'WLModal', { document });
     const calls = [];
     modal._handlers = { onToggleUnwatched: (id) => calls.push(id) };
-    modal._renderItem(video({ id: 'v9', percentWatched: 50, inProgress: true })).children[2]._listeners.click();
+    modal._renderItem(video({ id: 'v9', percentWatched: 50, inProgress: true })).children[1]._listeners.click();
     assert.deepEqual(calls, ['v9']);
   });
 });
