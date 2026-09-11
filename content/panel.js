@@ -45,6 +45,38 @@ const WLPanel = {
     WLModal.syncHeadingsToggle(state, { onToggle: () => this.toggleHeadings() });
   },
 
+  // The sort chip's label while the view was Manual, recorded with the group
+  // map. Language-independent: whatever the label was, a different one means
+  // the user picked another view sort.
+  _viewSortLabel: null,
+
+  _viewSortChanged() {
+    if (!this._viewSortLabel) return false;
+    const label = WLViewSort.current();
+    return label !== null && label !== this._viewSortLabel;
+  },
+
+  /**
+   * A view sort other than Manual reorders the list under the headings, so
+   * the grouping no longer describes what is on screen: treat the sort as
+   * having undone ours. Called from syncTrigger on every mutation batch, so
+   * it is one querySelector when nothing is stored.
+   */
+  checkViewSort() {
+    if (!this._headingsState || !this._viewSortChanged()) return;
+    this._dropHeadings();
+  },
+
+  _dropHeadings() {
+    WLHeadings.stop();
+    WLHeadings.clear();
+    this._viewSortLabel = null;
+    this._setHeadingsState(null);
+    WLStorage.setGroupMap({}).catch((err) => {
+      console.warn('WLPanel: failed to clear the group map after a view sort change', err);
+    });
+  },
+
   /**
    * The chip beside Organize: hide the headings but keep the stored map, or
    * put them back. The `hidden` flag on the map makes the choice survive a
@@ -318,6 +350,7 @@ const WLPanel = {
           playlistId,
           boundaries,
           videoIdsHash: WLHeadings.hashIds(this.currentSortOrder),
+          viewSortLabel: WLViewSort.current(),
         });
       } else {
         // The stored map must be CLEARED here, not left alone. Skipping the
@@ -473,6 +506,11 @@ const WLPanel = {
     // document.body observer after navigating to a non-playlist page — one
     // that would then survive the rest of the session.
     if (runId !== this._runId) return;
+    this._viewSortLabel = stored.viewSortLabel || null;
+    if (this._viewSortChanged()) {
+      this._dropHeadings();
+      return;
+    }
     if (stored.hidden) {
       this._setHeadingsState('hidden');
       return;
@@ -552,6 +590,7 @@ function syncTrigger(source) {
     });
   }
 
+  WLPanel.checkViewSort();
   WLModal.syncHeadingsToggle(WLPanel._headingsState, { onToggle: () => WLPanel.toggleHeadings() });
   WLPanel.restoreHeadings();
 }
@@ -568,6 +607,7 @@ function resetForNavigation() {
   WLHeadings.clear();
   WLPanel._headingsRestoredFor = null;
   WLPanel._headingsState = null;
+  WLPanel._viewSortLabel = null;
 }
 
 let lastUrl = location.href;

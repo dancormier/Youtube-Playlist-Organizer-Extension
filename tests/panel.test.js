@@ -49,7 +49,7 @@ function loadPanel(sandbox = {}) {
       showError() {},
       setStatus() {},
     },
-    WLViewSort: { ensureManual: async () => 'manual' },
+    WLViewSort: { ensureManual: async () => 'manual', current: () => 'Manual' },
     WLInnerTube: { resetConfig() {} },
     WLPlaylist: {},
     WLEnrich: {},
@@ -90,7 +90,7 @@ function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, toggleOve
   const modalCalls = { showBusy: [], showPreview: [], showPreviewOptions: [], showError: [], setStatus: [], headingsToggle: [] };
   const sandbox = {
     chrome: { runtime: { sendMessage } },
-    WLViewSort: { ensureManual: ensureManual || (async () => 'manual') },
+    WLViewSort: { ensureManual: ensureManual || (async () => 'manual'), current: () => 'Manual' },
     WLPlaylist: { read: async () => videos, applyOrder },
     WLEnrich: { enrich },
     WLStorage: {
@@ -1323,6 +1323,109 @@ describe('undo', () => {
     });
     await WLPanel.undoSort();
     assert.match(modalCalls.showError[0], /Manual/);
+  });
+});
+
+describe('view sort change drops the headings', () => {
+  const storedMap = (extra = {}) => ({
+    playlistId: 'WL',
+    boundaries: [{ videoId: 'a', name: 'Music', count: 1 }],
+    videoIdsHash: 'match',
+    viewSortLabel: 'Manual',
+    ...extra,
+  });
+
+  function loadWith(map, chipLabel) {
+    const calls = { watch: 0, clear: 0, saved: [], toggle: [] };
+    const chip = { label: chipLabel };
+    const WLPanel = loadPanel({
+      WLStorage: { getGroupMap: async () => map, setGroupMap: async (next) => { calls.saved.push({ ...next }); }, getUndo: async () => ({}), setUndo: async () => {} },
+      WLPlaylist: { read: async () => [{ id: 'a' }] },
+      WLViewSort: { ensureManual: async () => 'manual', current: () => chip.label },
+      WLHeadings: { boundariesFrom: () => [], hashIds: () => 'match', watch: () => { calls.watch++; }, stop() {}, clear: () => { calls.clear++; } },
+      WLModal: {
+        mountTrigger() {}, removeTrigger() {}, syncHeadingsToggle(state) { calls.toggle.push(state); }, verifyTrigger() { return { present: false }; },
+        close() {}, open() {}, showBusy() {}, showPreview() {}, showError() {}, setStatus() {},
+      },
+    });
+    return { WLPanel, calls, chip };
+  }
+
+  it('restoreHeadings injects when the chip still reads the recorded Manual label', async () => {
+    const { WLPanel, calls } = loadWith(storedMap(), 'Manual');
+    await WLPanel.restoreHeadings();
+    assert.equal(calls.watch, 1);
+    assert.equal(WLPanel._headingsState, 'shown');
+  });
+
+  it('restoreHeadings drops the map instead of injecting when the view sort changed', async () => {
+    const { WLPanel, calls } = loadWith(storedMap(), 'Date added (newest)');
+    await WLPanel.restoreHeadings();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(calls.watch, 0, 'headings would sit on the wrong videos');
+    assert.deepEqual(calls.saved.at(-1), {});
+    assert.equal(WLPanel._headingsState, null);
+  });
+
+  it('works in any language: only the recorded label matters', async () => {
+    const { WLPanel, calls } = loadWith(storedMap({ viewSortLabel: 'Manuell' }), 'Manuell');
+    await WLPanel.restoreHeadings();
+    assert.equal(calls.watch, 1);
+  });
+
+  it('a map stored without a label restores as before', async () => {
+    const { WLPanel, calls } = loadWith(storedMap({ viewSortLabel: undefined }), 'Date added (newest)');
+    await WLPanel.restoreHeadings();
+    assert.equal(calls.watch, 1);
+  });
+
+  it('checkViewSort drops shown headings live when the chip label changes', async () => {
+    const { WLPanel, calls, chip } = loadWith(storedMap(), 'Manual');
+    await WLPanel.restoreHeadings();
+    const clears = calls.clear;
+    WLPanel.checkViewSort();
+    assert.equal(WLPanel._headingsState, 'shown', 'no change yet');
+    chip.label = 'Most popular';
+    WLPanel.checkViewSort();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(calls.clear, clears + 1);
+    assert.equal(WLPanel._headingsState, null);
+    assert.equal(calls.toggle.at(-1), null, 'the chip goes too');
+    assert.deepEqual(calls.saved.at(-1), {});
+  });
+
+  it('checkViewSort also drops hidden headings, so the Show chip does not linger', async () => {
+    const { WLPanel, calls, chip } = loadWith(storedMap({ hidden: true }), 'Manual');
+    await WLPanel.restoreHeadings();
+    assert.equal(WLPanel._headingsState, 'hidden');
+    chip.label = 'Most popular';
+    WLPanel.checkViewSort();
+    assert.equal(WLPanel._headingsState, null);
+    assert.equal(calls.toggle.at(-1), null);
+  });
+
+  it('checkViewSort ignores a page without the chip', async () => {
+    const { WLPanel, chip } = loadWith(storedMap(), 'Manual');
+    await WLPanel.restoreHeadings();
+    chip.label = null;
+    WLPanel.checkViewSort();
+    assert.equal(WLPanel._headingsState, 'shown');
+  });
+
+  it('applySort records the chip label with the group map', async () => {
+    let saved;
+    const { WLPanel } = loadPanelWithStubs({
+      sendMessage: async () => ({ success: true }),
+      videos: [{ id: 'a', setVideoId: 'A' }],
+      applyOrder: async () => ({ applied: true, waitedMs: 1 }),
+      setGroupMap: async (map) => { saved = { ...map }; },
+      reload: () => {},
+      runTimers: true,
+      sortOrder: [{ id: 'a', setVideoId: 'A', cluster: 'Music' }],
+      playlistId: 'WL',
+    });
+    await WLPanel.applySort();
+    assert.equal(saved.viewSortLabel, 'Manual');
   });
 });
 
