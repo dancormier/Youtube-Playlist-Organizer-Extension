@@ -26,8 +26,8 @@
 .wl-trigger:hover { background: #fff; }
 .wl-trigger svg { width: 20px; height: 20px; }
 
-/* Inside YouTube's chip row: the same shape as the filter chips (translucent
-   fill, 8px radius, 32px tall, no border); a vertical rule sets it apart. */
+/* Inside YouTube's chip row, first, before the sort chip: the same shape as
+   the filter chips (translucent fill, 8px radius, 32px tall, no border). */
 .wl-trigger.wl-trigger-inline {
   position: relative;
   right: auto;
@@ -36,7 +36,7 @@
   flex-shrink: 0;
   vertical-align: middle;
   height: 32px;
-  margin-left: 14px;
+  margin: 0 12px 0 0;
   padding: 0 12px;
   border: none;
   border-radius: 8px;
@@ -47,26 +47,15 @@
   background: rgba(0, 0, 0, 0.05);
   color: #0f0f0f;
 }
-.wl-trigger.wl-trigger-inline::before {
-  content: '';
-  position: absolute;
-  left: -11.5px;
-  top: 4px;
-  width: 1px;
-  height: 24px;
-  background: rgba(0, 0, 0, 0.15);
-}
 .wl-trigger.wl-trigger-inline:hover { background: rgba(0, 0, 0, 0.1); }
 html[dark] .wl-trigger.wl-trigger-inline { background: rgba(255, 255, 255, 0.1); color: #f1f1f1; }
-html[dark] .wl-trigger.wl-trigger-inline::before { background: rgba(255, 255, 255, 0.2); }
 html[dark] .wl-trigger.wl-trigger-inline:hover { background: rgba(255, 255, 255, 0.2); }
 .wl-trigger.wl-trigger-inline svg { width: 18px; height: 18px; }
 
-/* The Show/Hide headings chip sits right after Organize: same shape, no rule
-   before it. Floating, it stacks above the floating Organize button. */
+/* The Show/Hide headings chip is the last chip in the row: same shape.
+   Floating, it stacks above the floating Organize button. */
 .wl-headings-toggle { bottom: 76px; }
-.wl-headings-toggle.wl-trigger-inline { margin-left: 8px; }
-.wl-headings-toggle.wl-trigger-inline::before { content: none; }
+.wl-headings-toggle.wl-trigger-inline { margin: 0 0 0 12px; }
 
 /* The modal speaks YouTube's account-menu vocabulary. Every colour is a token
    set here for the light theme and overridden under html[dark] — YouTube's

@@ -146,7 +146,7 @@ const WLModal = {
       // trigger that mounted floating moves into the row once it exists.
       if (host && !existing.classList.contains('wl-trigger-inline')) {
         existing.classList.add('wl-trigger-inline');
-        host.appendChild(existing);
+        host.insertBefore(existing, host.firstChild);
       }
       return false;
     }
@@ -159,9 +159,10 @@ const WLModal = {
     button.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>Organize`;
     button.addEventListener('click', () => onOpen());
 
+    // First in the row, before YouTube's sort chip; the headings chip goes last.
     if (host) {
       button.classList.add('wl-trigger-inline');
-      host.appendChild(button);
+      host.insertBefore(button, host.firstChild);
     } else {
       document.body.appendChild(button);
     }
@@ -189,7 +190,8 @@ const WLModal = {
   },
 
   /**
-   * A second chip after Organize that hides or shows the injected headings.
+   * A second chip, last in the row, that hides or shows the injected headings.
+   * With a floating trigger it floats above that.
    * `state` is 'shown', 'hidden', or null when this playlist has no stored
    * headings, in which case there is no button. Idempotent like mountTrigger:
    * syncTrigger calls it on every mutation batch, so a no-op must stay cheap.
@@ -202,9 +204,14 @@ const WLModal = {
 
     const shown = state === 'shown';
     const label = shown ? 'Hide headings' : 'Show headings';
-    if (button && trigger.nextElementSibling === button
+    const inline = trigger.classList.contains('wl-trigger-inline');
+    const parent = trigger.parentNode;
+    const placed = inline
+      ? parent && parent.lastElementChild === button
+      : trigger.nextElementSibling === button;
+    if (button && placed
         && button.getAttribute('aria-pressed') === String(shown)
-        && button.className.includes('wl-trigger-inline') === trigger.classList.contains('wl-trigger-inline')) {
+        && button.className.includes('wl-trigger-inline') === inline) {
       return;
     }
     if (!button) {
@@ -213,13 +220,12 @@ const WLModal = {
       button.type = 'button';
       button.addEventListener('click', () => onToggle?.());
     }
-    button.className = trigger.classList.contains('wl-trigger-inline')
-      ? 'wl-trigger wl-trigger-inline wl-headings-toggle'
-      : 'wl-trigger wl-headings-toggle';
+    button.className = inline ? 'wl-trigger wl-trigger-inline wl-headings-toggle' : 'wl-trigger wl-headings-toggle';
     button.setAttribute('aria-pressed', String(shown));
     button.setAttribute('aria-label', `${label} in this playlist`);
     button.innerHTML = `${this.HEADINGS_ICON}${label}`;
-    if (trigger.parentNode) trigger.parentNode.insertBefore(button, trigger.nextSibling);
+    if (inline && parent) parent.appendChild(button);
+    else if (parent) parent.insertBefore(button, trigger.nextSibling);
     else document.body.appendChild(button);
   },
 

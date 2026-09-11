@@ -589,7 +589,16 @@ function fakeDocument() {
 }
 
 function fakeHost(selector) {
-  const host = { _selector: selector, children: [], appendChild(el) { this.children.push(el); } };
+  const host = {
+    _selector: selector,
+    children: [{ id: 'yt-sort-chip' }],
+    appendChild(el) { this.children.push(el); },
+    insertBefore(el, ref) {
+      const i = ref ? this.children.indexOf(ref) : -1;
+      this.children.splice(i === -1 ? this.children.length : i, 0, el);
+    },
+    get firstChild() { return this.children[0] ?? null; },
+  };
   return host;
 }
 
@@ -626,8 +635,9 @@ describe('WLModal.mountTrigger placement', () => {
       document, SELECTORS: { TRIGGER_HOSTS: ['nope', selector] },
     });
     modal.mountTrigger({ onOpen: () => {} });
-    assert.equal(document._host.children.length, 1);
+    assert.equal(document._host.children.length, 2);
     assert.match(document._host.children[0].className, /wl-trigger-inline/);
+    assert.equal(document._host.children[1].id, 'yt-sort-chip', 'first in the row, before YouTube\'s sort chip');
     assert.equal(document._elements.length, 0, 'not appended to body');
   });
 
@@ -641,7 +651,7 @@ describe('WLModal.mountTrigger placement', () => {
     assert.equal(document._elements.length, 1, 'floating first');
     document._host = fakeHost(selector);
     assert.equal(modal.mountTrigger({ onOpen: () => {} }), false, 'no second button');
-    assert.equal(document._host.children.length, 1, 'moved into the row');
+    assert.equal(document._host.children.length, 2, 'moved into the row');
     assert.match(document._host.children[0].className, /wl-trigger-inline/);
   });
 
@@ -653,7 +663,8 @@ describe('WLModal.mountTrigger placement', () => {
       document, SELECTORS: { TRIGGER_HOSTS: [{ parentOf: 'chip-bar-view-model chip-view-model' }] },
     });
     modal.mountTrigger({ onOpen: () => {} });
-    assert.equal(host.children.length, 1);
+    assert.equal(host.children.length, 2);
+    assert.equal(host.children[0].id, 'wl-trigger');
     assert.equal(document._elements.length, 0);
   });
 
@@ -821,13 +832,18 @@ describe('WLModal.syncHeadingsToggle', () => {
   function mounted(inline) {
     const document = fakeDocument();
     const modal = loadGlobal('content/modal.js', 'WLModal', { document });
-    const parent = { children: [], insertBefore(node, ref) {
-      const i = ref ? this.children.indexOf(ref) : -1;
-      const j = this.children.indexOf(node);
-      if (j !== -1) this.children.splice(j, 1);
-      this.children.splice(i === -1 ? this.children.length : i, 0, node);
-      node.parentNode = this;
-    } };
+    const parent = {
+      children: [],
+      insertBefore(node, ref) {
+        const i = ref ? this.children.indexOf(ref) : -1;
+        const j = this.children.indexOf(node);
+        if (j !== -1) this.children.splice(j, 1);
+        this.children.splice(i === -1 ? this.children.length : i, 0, node);
+        node.parentNode = this;
+      },
+      appendChild(node) { this.insertBefore(node, null); },
+      get lastElementChild() { return this.children[this.children.length - 1] ?? null; },
+    };
     const trigger = document.createElement('button');
     trigger.id = 'wl-trigger';
     trigger.className = inline ? 'wl-trigger wl-trigger-inline' : 'wl-trigger';
@@ -863,13 +879,15 @@ describe('WLModal.syncHeadingsToggle', () => {
     assert.equal(toggle(), null, 'removed once the playlist has no headings');
   });
 
-  it('inserts the chip right after the trigger, in the trigger\'s shape', () => {
+  it('appends the chip at the end of the row, in the trigger\'s shape', () => {
     const { modal, document, parent, trigger, toggle } = mounted(true);
     track(document);
+    parent.insertBefore({ id: 'yt-sort-chip' }, null);
+    parent.insertBefore({ id: 'yt-all-chip' }, null);
     modal.syncHeadingsToggle('shown', { onToggle: () => {} });
     const button = toggle();
     assert.equal(parent.children[0], trigger);
-    assert.equal(parent.children[1], button);
+    assert.deepEqual(parent.children.map(el => el.id), ['wl-trigger', 'yt-sort-chip', 'yt-all-chip', 'wl-headings-toggle']);
     assert.match(button.className, /wl-trigger-inline/);
     assert.match(button.innerHTML, /Hide headings/);
     assert.equal(button.getAttribute('aria-pressed'), 'true');
@@ -888,16 +906,22 @@ describe('WLModal.syncHeadingsToggle', () => {
     assert.equal(toggle().getAttribute('aria-pressed'), 'false');
   });
 
-  it('moves back next to the trigger when something else lands between them', () => {
+  it('moves back to the end of the row when YouTube appends a chip after it', () => {
     const { modal, document, parent, trigger, toggle } = mounted(true);
     track(document);
     modal.syncHeadingsToggle('shown');
-    const stranger = { id: 'yt-chip' };
-    parent.insertBefore(stranger, toggle());
-    assert.equal(parent.children[1], stranger);
+    parent.insertBefore({ id: 'yt-chip' }, null);
+    assert.equal(parent.children[1], toggle());
     modal.syncHeadingsToggle('shown');
-    assert.deepEqual(parent.children.map(el => el.id), ['wl-trigger', 'wl-headings-toggle', 'yt-chip']);
+    assert.deepEqual(parent.children.map(el => el.id), ['wl-trigger', 'yt-chip', 'wl-headings-toggle']);
     assert.equal(parent.children[0], trigger);
+  });
+
+  it('floating: sits right after the floating trigger', () => {
+    const { modal, document, parent, trigger, toggle } = mounted(false);
+    track(document);
+    modal.syncHeadingsToggle('shown');
+    assert.deepEqual(parent.children, [trigger, toggle()]);
   });
 
   it('routes a click to onToggle', () => {
