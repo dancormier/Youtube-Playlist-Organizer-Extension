@@ -8,11 +8,21 @@
    flex row. The item is `position: static` by default, hence `relative` here. */
 .wl-group-anchor {
   position: relative;
-  margin-top: 44px;
+  /* Two-line heading (2.8rem title + 2rem meta + 12px clearance) plus 12px
+     of air above it. */
+  margin-top: 72px;
   overflow: visible;
 }
 
+/* Same tokens as the modal (styles/modal.css); keyed on html[dark] because
+   YouTube's theme is that attribute, not the OS setting. */
 .wl-playlist-heading {
+  --wl-surface: #fff;
+  --wl-text: #0f0f0f;
+  --wl-text-2: #606060;
+  --wl-layer-2: rgba(0, 0, 0, 0.1);
+  --wl-in-progress: #b3261e;
+
   position: absolute;
   /* Sits the heading's bottom edge on the item's top edge. Doing it with
      translateY rather than a negative `top` keeps it anchored whatever the
@@ -22,47 +32,46 @@
   /* Aligns the heading with the video thumbnails below it. */
   left: 36px;
   right: 0;
+  /* YouTube's section-title shape: bold title, meta on its own line beneath
+     (the meta's flex-basis wraps it onto the second line). */
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 0 8px;
   margin: 0;
-  padding: 0 0 6px;
-  border-bottom: 1px solid #3f3f3f;
+  padding: 0 0 12px;
   font-family: 'Roboto', 'Arial', sans-serif;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 2.8rem;
+  color: var(--wl-text);
+}
+html[dark] .wl-playlist-heading {
+  --wl-surface: #212121;
+  --wl-text: #fff;
+  --wl-text-2: #aaa;
+  --wl-layer-2: rgba(255, 255, 255, 0.2);
+  --wl-in-progress: #ff8a80;
+}
+
+.wl-playlist-heading.wl-in-progress { color: var(--wl-in-progress); }
+
+.wl-playlist-heading .wl-heading-meta {
+  flex-basis: 100%;
+  color: var(--wl-text-2);
   font-size: 1.4rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: #69b3ff;
-}
-
-.wl-playlist-heading.wl-in-progress { color: #ff8a80; }
-
-.wl-playlist-heading .wl-heading-count,
-.wl-playlist-heading .wl-heading-total {
-  color: #909090;
   font-weight: 400;
-  text-transform: none;
-  letter-spacing: 0;
+  line-height: 2rem;
 }
-/* The flex gap already separates the spans; the middot makes "12 videos · 3h 12m"
-   read as one phrase rather than two floating facts. */
-.wl-playlist-heading .wl-heading-total::before { content: '· '; }
+/* The middot makes "12 videos · 3h 12m" read as one phrase rather than two
+   floating facts. */
+.wl-playlist-heading .wl-heading-total::before { content: ' · '; }
 
-/* Injected headings sit on YouTube's own background, which follows the
-   viewer's OS/browser theme — the dark-theme colours above are illegible on
-   YouTube's light theme (white background). Colours below are chosen for
-   APCA/WCAG 2.1 AA contrast against a white background. */
-@media (prefers-color-scheme: light) {
-  .wl-playlist-heading {
-    border-bottom-color: #d3d3d3;
-    color: #0b5fc7;
-  }
-
-  .wl-playlist-heading.wl-in-progress { color: #b3261e; }
-
-  .wl-playlist-heading .wl-heading-count,
-  .wl-playlist-heading .wl-heading-total {
-    color: #5f5f5f;
-  }
+/* A wrapping title would outgrow the anchor's fixed margin-top gap and overlap
+   the item above; the label ellipsizes instead. */
+.wl-playlist-heading .wl-heading-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }

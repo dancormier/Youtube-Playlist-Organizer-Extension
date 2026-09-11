@@ -378,11 +378,28 @@ describe('WLHeadings.inject', () => {
 
     const heading = headingIn(0);
     assert.equal(heading.children[0].textContent, 'Music');
-    assert.equal(heading.children[1].textContent, '3 videos');
-    assert.equal(heading.children.length, 2, 'a group map stored without remaining gets no total');
+    assert.equal(heading.children[1].className, 'wl-heading-meta');
+    assert.equal(heading.children[1].children[0].textContent, '3 videos');
+    assert.equal(heading.children[1].children.length, 1, 'a group map stored without remaining gets no total');
   });
 
-  it('appends the unwatched total after the count', () => {
+  it('draws the in-progress heading as a plain label, no icon and no typed glyph', () => {
+    const { document, headingIn } = fakePlaylist(['a']);
+    const headings = loadGlobal('content/headings.js', 'WLHeadings', {
+      document, SELECTORS, MutationObserver: class { observe() {} disconnect() {} },
+    });
+
+    headings.inject([{ videoId: 'a', name: headings.IN_PROGRESS_LABEL, count: 1 }]);
+
+    const heading = headingIn(0);
+    assert.equal(heading.className, 'wl-playlist-heading wl-in-progress');
+    assert.ok(!heading.innerHTML, 'no markup precedes the label');
+    assert.equal(heading.children[0].className, 'wl-heading-label');
+    assert.equal(heading.children[0].textContent, 'In progress');
+    assert.equal(heading.getAttribute('data-wl-heading'), 'In progress');
+  });
+
+  it('stacks count and total in one meta line under the label', () => {
     const { document, headingIn } = fakePlaylist(['a']);
     const headings = loadGlobal('content/headings.js', 'WLHeadings', {
       document, SELECTORS, MutationObserver: class { observe() {} disconnect() {} },
@@ -391,8 +408,9 @@ describe('WLHeadings.inject', () => {
     headings.inject([{ videoId: 'a', name: 'Music', count: 3, remaining: 11520 }]);
 
     const heading = headingIn(0);
-    assert.deepEqual(heading.children.map(el => el.className), ['', 'wl-heading-count', 'wl-heading-total']);
-    assert.equal(heading.children[2].textContent, '3h 12m');
+    assert.deepEqual(heading.children.map(el => el.className), ['wl-heading-label', 'wl-heading-meta']);
+    assert.deepEqual(heading.children[1].children.map(el => el.className), ['wl-heading-count', 'wl-heading-total']);
+    assert.equal(heading.children[1].children[1].textContent, '3h 12m');
   });
 
   it('omits the total when nothing is left to watch', () => {
@@ -403,7 +421,7 @@ describe('WLHeadings.inject', () => {
 
     headings.inject([{ videoId: 'a', name: 'Music', count: 1, remaining: 0 }]);
 
-    assert.equal(headingIn(0).children.length, 2);
+    assert.equal(headingIn(0).children[1].children.length, 1);
   });
 });
 

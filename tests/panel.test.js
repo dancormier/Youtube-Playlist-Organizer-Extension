@@ -79,8 +79,10 @@ function loadPanel(sandbox = {}) {
  * toggleUnwatched() can be called directly without going through runSort() first.
  * `setGroupMap`, when set, replaces the default no-op WLStorage.setGroupMap —
  * used by the post-sort persistence tests to observe ordering/timing.
+ * `mode` seeds currentMode (default 'ai', the only mode whose session accepts
+ * toggleUnwatched()/changeSortOptions()); runSort() overwrites it.
  */
-function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, toggleOverride, reload, runTimers, sortOrder, playlistId, setGroupMap, setSortOptions, sortOptions }) {
+function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, toggleOverride, reload, runTimers, sortOrder, playlistId, setGroupMap, setSortOptions, sortOptions, mode = 'ai' }) {
   const modalCalls = { showBusy: [], showPreview: [], showPreviewOptions: [], showError: [], setStatus: [] };
   const sandbox = {
     chrome: { runtime: { sendMessage } },
@@ -121,6 +123,7 @@ function loadPanelWithStubs({ sendMessage, enrich, videos, applyOrder, toggleOve
   if (sortOrder) WLPanel.currentSortOrder = sortOrder;
   if (playlistId) WLPanel.currentPlaylistId = playlistId;
   if (sortOptions) WLPanel.currentSortOptions = sortOptions;
+  WLPanel.currentMode = mode;
   return { WLPanel, modalCalls, WLModal: sandbox.WLModal };
 }
 
@@ -141,6 +144,44 @@ describe('runSort mode selection', () => {
     assert.equal(enriched, false, 'duration mode must not pay for enrichment');
   });
 
+  it('sends SORT_BY_DURATION with by: duration and the unchanged busy text in duration mode', async () => {
+    const sent = [];
+    const { WLPanel, modalCalls } = loadPanelWithStubs({
+      sendMessage: async (msg) => { sent.push(msg); return { success: true, sortOrder: [] }; },
+      enrich: async () => {},
+      videos: [{ id: 'a', setVideoId: 'A', duration: 60, percentWatched: 0 }],
+      mode: null,
+    });
+
+    await WLPanel.runSort('duration');
+
+    assert.equal(sent[0].by, 'duration');
+    assert.ok(modalCalls.showBusy.includes('Sorting by duration...'));
+    assert.equal(WLPanel.currentMode, 'duration');
+  });
+
+  for (const mode of ['title', 'channel']) {
+    it(`sends SORT_BY_DURATION with by: ${mode} and never enriches in ${mode} mode`, async () => {
+      const sent = [];
+      let enriched = false;
+      const { WLPanel, modalCalls } = loadPanelWithStubs({
+        sendMessage: async (msg) => { sent.push(msg); return { success: true, sortOrder: [] }; },
+        enrich: async () => { enriched = true; },
+        videos: [{ id: 'a', setVideoId: 'A', duration: 60, percentWatched: 0 }],
+        mode: null,
+      });
+
+      await WLPanel.runSort(mode);
+
+      assert.equal(sent.length, 1);
+      assert.equal(sent[0].type, 'SORT_BY_DURATION');
+      assert.equal(sent[0].by, mode);
+      assert.equal(enriched, false);
+      assert.ok(modalCalls.showBusy.includes(`Sorting by ${mode}...`));
+      assert.equal(WLPanel.currentMode, mode);
+    });
+  }
+
   it('enriches and sends ANALYZE with a playlistId in ai mode', async () => {
     const sent = [];
     let enriched = false;
@@ -155,6 +196,66 @@ describe('runSort mode selection', () => {
     assert.equal(enriched, true);
     assert.equal(sent[0].type, 'ANALYZE');
     assert.ok(sent[0].playlistId, 'ANALYZE must carry the playlistId');
+    assert.equal(WLPanel.currentMode, 'ai');
+  });
+});
+
+describe('RESORT is AI-only', () => {
+  // The background answers RESORT from the last AI run's cache, so a resort
+  // requested from a simple-sort preview would repaint it with that grouping.
+  for (const mode of ['duration', 'title', 'channel', null]) {
+    it(`toggleUnwatched sends nothing and touches nothing when the mode is ${mode}`, async () => {
+      const sent = [];
+      let toggled = false;
+      const { WLPanel, modalCalls } = loadPanelWithStubs({
+        sendMessage: async (msg) => { sent.push(msg); return { success: true, sortOrder: [] }; },
+        toggleOverride: async () => { toggled = true; return ['v1']; },
+        playlistId: 'PL1',
+        sortOrder: [{ id: 'a', setVideoId: 'A' }],
+        mode,
+      });
+
+      await WLPanel.toggleUnwatched('v1');
+
+      assert.deepEqual(sent, []);
+      assert.equal(toggled, false, 'the stored override must not flip either');
+      assert.deepEqual(modalCalls.setStatus, []);
+      assert.deepEqual(modalCalls.showPreview, []);
+      assert.deepEqual(WLPanel.currentSortOrder.map(v => v.id), ['a']);
+    });
+
+    it(`changeSortOptions sends nothing and saves nothing when the mode is ${mode}`, async () => {
+      const sent = [];
+      const saved = [];
+      const { WLPanel, modalCalls } = loadPanelWithStubs({
+        sendMessage: async (msg) => { sent.push(msg); return { success: true, sortOrder: [] }; },
+        setSortOptions: async (opts) => { saved.push(opts); },
+        playlistId: 'PL1',
+        mode,
+      });
+
+      await WLPanel.changeSortOptions({ withinGroup: 'title', inProgress: 'top', groupOrder: 'alpha' });
+
+      assert.deepEqual(sent, []);
+      assert.deepEqual(saved, []);
+      assert.deepEqual(modalCalls.setStatus, []);
+    });
+  }
+
+  it('a duration run after an AI run closes the door: the next toggle sends nothing', async () => {
+    const sent = [];
+    const { WLPanel } = loadPanelWithStubs({
+      sendMessage: async (msg) => { sent.push(msg); return { success: true, sortOrder: [] }; },
+      enrich: async () => {},
+      toggleOverride: async () => ['v1'],
+      videos: [{ id: 'a', setVideoId: 'A', duration: 60, percentWatched: 50 }],
+    });
+
+    await WLPanel.runSort('ai');
+    await WLPanel.runSort('duration');
+    await WLPanel.toggleUnwatched('v1');
+
+    assert.deepEqual(sent.map(m => m.type), ['ANALYZE', 'SORT_BY_DURATION']);
   });
 });
 

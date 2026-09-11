@@ -1,13 +1,15 @@
 # YouTube Playlist Organizer
 
-A browser extension that sorts a YouTube playlist — most usefully **Watch Later** — into topic groups using an AI model of your choice, or by duration. Works in Firefox and Chrome.
+A browser extension that sorts a YouTube playlist — most usefully **Watch Later** — into topic groups using an AI model of your choice, or by duration, title or channel. Works in Firefox and Chrome.
 
 ## What it does
 
 - Adds an **Organize** button to the playlist's filter-chip row (floating at the bottom right if that row is missing)
 - **Analyze & sort** — the model you configure groups videos into your categories. Needs an API key (or a local Ollama), takes a few seconds
 - **Sort by duration** — shortest first. Local, instant, no API key
-- Preview the result before applying, with per-video "treat as unwatched" toggles
+- **Sort by title** — A to Z. Local, instant, no API key
+- **Sort by channel** — channel name A to Z, then title. Local, instant, no API key
+- Preview the result before applying and, in AI mode, mark a started video as unwatched so it sorts with the rest of its group
 - Applying sends every move in one batched request, then draws group headings into the playlist
 - **Hide group headings** removes the headings and stops them returning
 
@@ -66,7 +68,7 @@ Then reload any YouTube tabs that were already open. The grant does not apply re
 
 ## Setup
 
-Only **Analyze & sort** needs any of this; **Sort by duration** works out of the box. Click the toolbar icon to open the popup:
+Only **Analyze & sort** needs any of this; the duration, title and channel sorts work out of the box. Click the toolbar icon to open the popup:
 
 1. **Provider** — pick where the requests go (see the table below).
 2. **API key** — paste a key for that provider. The **Get a key** link opens the right page. Ollama needs no key.
@@ -81,7 +83,7 @@ Only **Analyze & sort** needs any of this; **Sort by duration** works out of the
 | Sort option | Choices | Notes |
 |---|---|---|
 | Within a group | Shortest first (default), Longest first, Playlist order, Title A–Z | Playlist order keeps the videos exactly as they sit in the playlist today |
-| Group in progress | Checked (default) or unchecked | Checked puts every started video in its own **In Progress** group at the top, least time left first. Unchecked keeps each one inside its category, first within the group, least time left first |
+| Group in progress | Checked (default) or unchecked | Checked puts every started video in its own **In progress** group at the top, least time left first. Unchecked keeps each one inside its category, first within the group, least time left first |
 | Group order | My category order (default), Largest group first, Smallest group first, Alphabetical | Size ties keep your category order. **Other** is always the last group and **Unavailable** always comes after it, whichever you pick |
 
 ## Providers

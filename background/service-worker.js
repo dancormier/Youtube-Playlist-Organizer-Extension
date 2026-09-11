@@ -1,6 +1,6 @@
 // background/service-worker.js
 import { categorizeVideos, listModels } from '../lib/classify.js';
-import { buildSortOrder, buildDurationSortOrder, normalizeSortOptions } from '../lib/sort.js';
+import { buildSortOrder, buildSimpleSortOrder, normalizeSortOptions } from '../lib/sort.js';
 import { loadSettings, normalizeSettings } from '../lib/settings.js';
 import { getProvider } from '../lib/providers.js';
 
@@ -21,8 +21,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Name predates the title and channel sorts; `by` selects among the three.
   if (message.type === 'SORT_BY_DURATION') {
-    sendResponse({ success: true, sortOrder: buildDurationSortOrder(message.videos) });
+    try {
+      sendResponse({ success: true, sortOrder: buildSimpleSortOrder(message.videos, message.by ?? 'duration') });
+    } catch (err) {
+      sendResponse({ success: false, error: err.message });
+    }
     return true;
   }
 

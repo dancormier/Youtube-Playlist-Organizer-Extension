@@ -2,7 +2,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildSortOrder, buildDurationSortOrder, effectiveProgress, WATCHED_THRESHOLD,
+  buildSortOrder, buildDurationSortOrder, buildSimpleSortOrder, effectiveProgress, WATCHED_THRESHOLD,
   SORT_DEFAULTS, SORT_CHOICES, normalizeSortOptions,
 } from '../lib/sort.js';
 import { UNAVAILABLE_GROUP } from '../lib/taxonomy.js';
@@ -421,5 +421,55 @@ describe('buildSortOrder ignores options in the non-AI path', () => {
     assert.deepEqual(order.map(v => v.id), ['a', 'b']);
     assert.equal('cluster' in order[0], false);
     assert.equal('inProgress' in order[0], false);
+  });
+});
+
+describe('buildSimpleSortOrder', () => {
+  const ids = (order) => order.map(v => v.id);
+
+  it('duration is shortest first and is what buildDurationSortOrder returns', () => {
+    const videos = [video({ id: 'b', duration: 9 }), video({ id: 'a', duration: 1 }), video({ id: 'c', duration: 5 })];
+    assert.deepEqual(ids(buildSimpleSortOrder(videos, 'duration')), ['a', 'c', 'b']);
+    assert.deepEqual(ids(buildSimpleSortOrder(videos)), ['a', 'c', 'b'], 'duration is the default');
+    assert.deepEqual(buildDurationSortOrder(videos), buildSimpleSortOrder(videos, 'duration'));
+  });
+
+  it('title is A to Z, ignoring case and accents', () => {
+    const videos = [video({ id: 'z', title: 'zebra' }), video({ id: 'e', title: 'Éclair' }), video({ id: 'a', title: 'apple' })];
+    assert.deepEqual(ids(buildSimpleSortOrder(videos, 'title')), ['a', 'e', 'z']);
+  });
+
+  it('channel is channel A to Z, then title within a channel', () => {
+    const videos = [
+      video({ id: 'b2', channel: 'Beta', title: 'Two' }),
+      video({ id: 'a1', channel: 'alpha', title: 'One' }),
+      video({ id: 'b1', channel: 'beta', title: 'One' }),
+    ];
+    assert.deepEqual(ids(buildSimpleSortOrder(videos, 'channel')), ['a1', 'b1', 'b2']);
+  });
+
+  it('is stable: equal keys keep playlist order', () => {
+    const videos = [video({ id: 'x', duration: 5, title: 'Same', channel: 'C' }), video({ id: 'y', duration: 5, title: 'Same', channel: 'C' })];
+    for (const by of ['duration', 'title', 'channel']) {
+      assert.deepEqual(ids(buildSimpleSortOrder(videos, by)), ['x', 'y'], by);
+    }
+  });
+
+  it('sorts a missing title or channel as empty text instead of throwing', () => {
+    const videos = [video({ id: 'a', title: 'A', channel: 'C' }), video({ id: 'n', title: undefined, channel: undefined })];
+    assert.deepEqual(ids(buildSimpleSortOrder(videos, 'title')), ['n', 'a']);
+    assert.deepEqual(ids(buildSimpleSortOrder(videos, 'channel')), ['n', 'a']);
+  });
+
+  it('does not mutate the input and adds no cluster or inProgress key', () => {
+    const videos = [video({ id: 'b', title: 'B' }), video({ id: 'a', title: 'A' })];
+    const order = buildSimpleSortOrder(videos, 'title');
+    assert.deepEqual(ids(videos), ['b', 'a']);
+    assert.equal('cluster' in order[0], false);
+    assert.equal('inProgress' in order[0], false);
+  });
+
+  it('rejects an unknown sort', () => {
+    assert.throws(() => buildSimpleSortOrder([video()], 'views'), /Unknown sort/);
   });
 });

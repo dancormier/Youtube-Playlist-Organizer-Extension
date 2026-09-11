@@ -2,7 +2,7 @@
 // Depends on: content/selectors.js, content/storage.js
 
 const WLHeadings = {
-  IN_PROGRESS_LABEL: '▶ In Progress',
+  IN_PROGRESS_LABEL: 'In progress',
   ATTRIBUTE: 'data-wl-heading',
   ANCHOR_CLASS: 'wl-group-anchor',
 
@@ -82,27 +82,30 @@ const WLHeadings = {
   // `remaining` is undefined on a group map stored before it was recorded.
   _build(name, count, remaining) {
     const heading = document.createElement('h2');
-    heading.className = name === this.IN_PROGRESS_LABEL
-      ? 'wl-playlist-heading wl-in-progress'
-      : 'wl-playlist-heading';
+    const inProgress = name === this.IN_PROGRESS_LABEL;
+    heading.className = inProgress ? 'wl-playlist-heading wl-in-progress' : 'wl-playlist-heading';
     heading.setAttribute(this.ATTRIBUTE, name);
 
     const label = document.createElement('span');
+    label.className = 'wl-heading-label';
     label.textContent = name;
     heading.appendChild(label);
 
+    const meta = document.createElement('span');
+    meta.className = 'wl-heading-meta';
     if (count > 0) {
       const counter = document.createElement('span');
       counter.className = 'wl-heading-count';
       counter.textContent = `${count} video${count === 1 ? '' : 's'}`;
-      heading.appendChild(counter);
+      meta.appendChild(counter);
     }
     if (remaining > 0) {
       const total = document.createElement('span');
       total.className = 'wl-heading-total';
       total.textContent = this.formatTotal(remaining);
-      heading.appendChild(total);
+      meta.appendChild(total);
     }
+    if (meta.children.length > 0) heading.appendChild(meta);
     return heading;
   },
 
