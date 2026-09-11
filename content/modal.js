@@ -501,6 +501,8 @@ const WLModal = {
 
       const list = document.createElement('div');
       list.className = 'wl-option-list';
+      list.id = `wl-sort-list-${key}`;
+      row.setAttribute('aria-controls', list.id);
       list.setAttribute('role', 'radiogroup');
       list.setAttribute('aria-label', this.SORT_FIELD_LABELS[key]);
       list.hidden = !open;
@@ -517,6 +519,9 @@ const WLModal = {
         radio.checked = value === sortOptions[key];
         radio.addEventListener('change', () => {
           this._openSortKey = null;
+          // Hiding a list that still holds focus drops focus to <body>, which
+          // the post-re-sort focus restore then reads as "nothing focused".
+          row.focus?.();
           list.hidden = true;
           row.setAttribute('aria-expanded', 'false');
           emit();

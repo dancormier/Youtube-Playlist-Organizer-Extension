@@ -347,6 +347,9 @@ describe('WLModal.showPreview sort options', () => {
     assert.equal(modal._openSortKey, null);
     assert.equal(listFor('groupOrder').hidden, true);
     assert.equal(rowFor('groupOrder').getAttribute('aria-expanded'), 'false');
+    // Focus moves to the row before the list hides, or the browser drops it to <body>.
+    assert.equal(rowFor('groupOrder')._focused, true);
+    assert.equal(rowFor('groupOrder').getAttribute('aria-controls'), listFor('groupOrder').id);
   });
 
   it('a second change carries the first one, not a render-time snapshot', () => {

@@ -274,7 +274,6 @@ html[dark] .wl-modal-backdrop {
 .wl-group-heading .wl-play-icon { width: 12px; height: 12px; flex-shrink: 0; }
 .wl-group-heading .wl-group-meta {
   color: var(--wl-text-2);
-  opacity: 0.7;
   font-size: 1.2rem;
   font-weight: 400;
 }
@@ -348,4 +347,5 @@ html[dark] .wl-modal-backdrop {
 @media (prefers-reduced-motion: reduce) {
   .wl-chevron svg,
   .wl-switch::before { transition: none; }
+  .wl-progress-fill { animation: none; width: 100%; opacity: 0.4; }
 }
