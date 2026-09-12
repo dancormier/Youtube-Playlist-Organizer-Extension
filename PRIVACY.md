@@ -23,4 +23,4 @@ Nothing is sent to the extension's author or to any other third party.
 
 ## Contact
 
-Questions about this policy or the extension's data handling: Dan Cormier <dancamus860@gmail.com>, or open an issue on the repository.
+Questions about this policy or the extension's data handling: Dan Cormier <dancormierinc@gmail.com>, or open an issue on the repository.
