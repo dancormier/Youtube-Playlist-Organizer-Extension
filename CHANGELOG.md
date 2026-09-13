@@ -4,6 +4,16 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-13
+
+First version submitted to the Chrome Web Store and to addons.mozilla.org as a listed add-on. No code changes from 0.7.0; AMO requires a new version number because 0.7.0 was already signed on the unlisted channel.
+
+### Added
+- Chrome Web Store listing assets under `docs/store/`: three 1280x800 screenshots and a 440x280 promo tile. ([#10](https://github.com/dancormier/Youtube-Playlist-Organizer/pull/10))
+
+### Changed
+- Contact address in `PRIVACY.md` and `package.json` is now dancormierinc@gmail.com. ([#9](https://github.com/dancormier/Youtube-Playlist-Organizer/pull/9))
+
 ## [0.7.0] - 2026-09-11
 
 First public release. Everything below landed between the last private build (0.6.0) and this version.
