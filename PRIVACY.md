@@ -19,7 +19,7 @@ Nothing is sent to the extension's author or to any other third party.
 ## Permissions
 
 - `storage` — the settings and working state above.
-- `activeTab` and the `https://www.youtube.com/*` host permission — to run on playlist pages and talk to YouTube's API from there. Firefox asks you to grant the host permission explicitly.
+- The `https://www.youtube.com/*` host permission — to run on playlist pages and talk to YouTube's API from there. Firefox asks you to grant the host permission explicitly; the Firefox build also declares `activeTab` so clicking the toolbar button grants access to the open YouTube tab until you do.
 
 ## Contact
 

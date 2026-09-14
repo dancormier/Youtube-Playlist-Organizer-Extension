@@ -2,7 +2,7 @@
   "name": "youtube-playlist-organizer",
   "private": true,
   "type": "module",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "scripts": {
     "test": "node --test tests/*.test.js",
     "build": "./build.sh"

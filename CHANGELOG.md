@@ -4,6 +4,11 @@ All notable changes to this project are recorded here. The format follows [Keep 
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-09-14
+
+### Changed
+- The Chrome build no longer requests `activeTab`; Chrome grants the YouTube host permission at install, so the permission did nothing there. The Chrome Web Store review flagged it as requested but unused. The Firefox build keeps it as the toolbar-click fallback for its opt-in host permission. `PRIVACY.md` now describes this per browser.
+
 ## [0.7.1] - 2026-09-13
 
 First version submitted to the Chrome Web Store and to addons.mozilla.org as a listed add-on. No code changes from 0.7.0; AMO requires a new version number because 0.7.0 was already signed on the unlisted channel.
@@ -50,5 +55,7 @@ First public release. Everything below landed between the last private build (0.
 
 Private development builds: InnerTube-based read and batched reorder, Anthropic-only classification, duration sort, heading injection that keeps YouTube's drag-to-reorder working, unlisted Firefox signing.
 
-[Unreleased]: https://github.com/dancormier/youtube-playlist-organizer/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/dancormier/youtube-playlist-organizer/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/dancormier/youtube-playlist-organizer/releases/tag/v0.7.2
+[0.7.1]: https://github.com/dancormier/youtube-playlist-organizer/releases/tag/v0.7.1
 [0.7.0]: https://github.com/dancormier/youtube-playlist-organizer/releases/tag/v0.7.0
